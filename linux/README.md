@@ -1,6 +1,8 @@
 # Linux Virtual Scanner
 This project implements a virtual scanner device for Linux using the SANE (Scanner Access Now Easy) framework. It allows you to simulate a scanner device and feed custom images into applications that support SANE.
 
+https://github.com/user-attachments/assets/51f2f4c3-d123-41bb-a010-fcd72097fc18
+
 ## Overview
 The Linux Virtual Scanner creates a virtual scanning device that applications can interact with through the SANE API. Instead of capturing images from physical hardware, this scanner loads images from files on disk and presents them as scanned documents.
 
