@@ -1,0 +1,245 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#include ""res\\mfc.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\twain.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOGEX 0, 0, 235, 55
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About TWAIN Sample App"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    LTEXT           "TWAIN Sample App mfc Version 1.0",IDC_STATIC,40,10,119,8,SS_NOPREFIX
+    LTEXT           "Copyright (C) 2007",IDC_STATIC,40,25,119,8
+    DEFPUSHBUTTON   "OK",IDOK,178,7,50,16,WS_GROUP
+END
+
+IDD_MFC32_APP DIALOGEX 0, 0, 210, 125
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "TWAIN Sample App mfc"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    LISTBOX         IDL_DS,7,7,133,63,LBS_SORT | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT | WS_DISABLED | WS_VSCROLL | WS_GROUP | WS_TABSTOP
+    PUSHBUTTON      "Connect to\nData Source",IDB_CONNECT_DS,148,7,55,25,BS_MULTILINE | WS_DISABLED | WS_GROUP
+    EDITTEXT        IDC_STC_DS,7,74,196,44,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP
+    PUSHBUTTON      "Cancel",IDCANCEL,148,54,55,16,WS_GROUP
+    PUSHBUTTON      "Set Default",IDB_DEFAULT_DS,148,35,55,14,BS_MULTILINE | WS_DISABLED | WS_GROUP
+END
+
+IDD_TW_ENUMERATION DIALOGEX 0, 0, 186, 90
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Dialog"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,129,7,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,129,24,50,14
+    LISTBOX         IDC_LIST1,7,7,120,76,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+END
+
+IDD_MFC32_CONFIGURE DIALOGEX 0, 0, 563, 230
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_VISIBLE | WS_CAPTION
+CAPTION "TWAIN Configuration"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Scan",IDB_SCAN,97,207,50,16,WS_GROUP
+    PUSHBUTTON      "UI Only",IDB_UIONLY,155,207,50,16
+    PUSHBUTTON      "Cancel",IDCANCEL,213,207,50,16
+    LTEXT           "",IDC_STC_DS,7,1,304,38
+    CONTROL         "",IDLC_CAPS,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | WS_BORDER | WS_GROUP | WS_TABSTOP,7,39,304,148
+    PUSHBUTTON      "Path...",IDB_PATH,7,190,33,12
+    EDITTEXT        IDC_SAVEPATH,46,190,265,12,ES_AUTOHSCROLL | ES_READONLY
+    CONTROL         "Show UI",IDC_SHOWUI,"Button",BS_AUTOCHECKBOX | WS_GROUP | WS_TABSTOP,7,204,76,8
+    CONTROL         "Keep Open",IDC_KEEPOPEN,"Button",BS_AUTOCHECKBOX | WS_GROUP | WS_TABSTOP,17,215,76,8
+    LTEXT           "Image Info",IDC_STATIC,319,7,237,8
+    EDITTEXT        IDC_IMAGEINFO,319,16,237,48,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP
+    LTEXT           "Extended Image Info",IDC_STATIC,319,71,237,8
+    EDITTEXT        IDC_EXTIMAGEINFO,319,80,237,143,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | NOT WS_TABSTOP
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 2,5,0,0
+ PRODUCTVERSION 2,5,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904e4"
+        BEGIN
+            VALUE "CompanyName", "TWAIN Working Group"
+            VALUE "FileDescription", "Sample TWAIN Application"
+            VALUE "FileVersion", "2.5.0.0"
+            VALUE "InternalName", "SampleApp.exe"
+            VALUE "LegalCopyright", "(c) TWAIN Working Group.  All rights reserved."
+            VALUE "OriginalFilename", "SampleApp.exe"
+            VALUE "ProductName", "SampleApp"
+            VALUE "ProductVersion", "2.5.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1252
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 228
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 48
+    END
+
+    IDD_MFC32_APP, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 203
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 118
+    END
+
+    IDD_TW_ENUMERATION, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 83
+    END
+
+    IDD_MFC32_CONFIGURE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 556
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 223
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About TWAIN Sample App..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#include "res\mfc.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

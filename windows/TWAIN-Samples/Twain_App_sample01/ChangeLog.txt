@@ -1,0 +1,143 @@
+2016-01-29 Kodak Alaris Inc. mlm@kodakalaris.com
+
+    * numerous files updated
+    * fixed to better determine when dsm callbacks are allowed
+    * add redraw to dsm callback to force processing of window messages
+    * bumped all versions to 2.3
+    * copied over the 2.3 twain.h
+    * added VS2010 solutions
+    * set warning level to 4 and set warnings to be treated as errors
+
+2010-03-10 JFL Peripheral Solutions jimw@jflinc.com
+
+    * mfcDlgConfigure.cpp  Add option of KeepUIEnabled if scanning with UI
+
+2010-02-16 JFL Peripheral Solutions jimw@jflinc.com
+
+    * TwainApp.cpp, TwainApp.h, mfcDlgConfigure.cpp, & mfcDlgConfigure.h
+        Save files to selected destination folder.
+
+2010-02-05 JFL Peripheral Solutions jimw@jflinc.com
+
+    * TwainApp.cpp, TwainApp.h, mfcDlgConfigure.cpp, mfcDlgConfigure.h, & mfcDlgMain.cpp
+        Expand ExtImageInfo usability. 
+        Make mfcDlgConfigure a child of TWAINApp.
+
+2010-01-19 JFL Peripheral Solutions jimw@jflinc.com
+
+    * mfcDlgConfigure.cpp, Fix issue if receive invalid container
+
+2009-12-31 JFL Peripheral Solutions jimw@jflinc.com
+
+    * TwainApp.cpp, TwainApp.h Fix MSGSET for default DS.
+
+2009-12-27 JFL Peripheral Solutions mihailm
+
+    * Correct Linux compatible
+    * Add Multi-page TIFF just one file for all pages
+    * Initialize capability containers 
+    * Free some resources 
+    * Added: MSVC 2008 solution
+    * Fixed: compiler defines
+
+2009-11-27 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Correct the name of the mcf classes to remove 32, from Cmfc32DlgConfigure
+        to CmfcDlgConfigure
+    * Identify capability as changed if number of items available change even
+        if current is the same.
+    * Highlight the column of the data that changed
+    * Correct the name of the class to display Enumerations from CTW_Array_Dlg
+        to CTW_Enum_Dlg
+    * Add MessageBoxes to identify Message Set functionality that is missing
+    * Move functionality to populate the items to display into the
+        CTW_Enum_Dlg class
+    
+2009-11-25 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Use color on CListCtrl to show readonly and changed capabilities
+    * Add open DS UIOnly
+
+2009-11-25 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Fix FloatToFIX32 rounding error for negitive values
+    * Change from GetArray to getItem for Array and Enumeration caps
+    * update get_message to work with MSG_GET, MSG_GETCURRENT, MSG_GETDEFAULT Use 
+        CListCtrl for listing capabilities
+
+2009-11-05 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Update to TWAIN version 2.1 of the specificaion
+    * Allow to set the default DS
+    * Start with the default DS is either of the Shift keys are held down when launched.
+    * update installer to include DSM2.1.0
+
+2009-07-16 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Update installer to use newest DSM merge module
+    * Pass the Windows handle to EnableDS if we have it
+    * Sort the list of DS and enumerations
+    * Add many strings to dispay known capabilities and enumerations values.
+    * Update 64bit Windows installer to install both 32bit and 64bit App
+
+2009-05-12 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Mark read only caps with a 'r' 
+
+2009-05-12 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Simplified the method to get the current value in CommonTWAIN. 
+    * Expanded convertCAP_Item_toString to take into account the Type
+    * Simplified print_ICAP to eliminate many overloaded functions.  
+    * Expand print_ICAP to handle more TWAIN types.
+        
+2009-03-16 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Display bool Capabilities correctly. 
+    * Double clicking on a bool capability to attempt to set it to the opposite
+    * Fix bugs in Extended Image Info
+    * Fix bug with scanning with UI
+        
+2009-01-06 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Updated the TWAIN2 Sample Application to separate CMD and GUI implementations and 
+        create some more base classes to make it easier to derive more applications. 
+    * Updated the TWAIN2 Sample App GUI to display all capabilities supported, not just 
+        the 4 or 5 that were hardcoded.
+    * Updated the TWAIN2 Sample App GUI so Double clicking on any Enumeration will display 
+        all possible choices and allow changing it.
+    * Updated the TWAIN2 Sample App GUI so Changing any setting reloads all the current 
+        settings so the app is always up to date.
+
+
+2008-12-23 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Add Doxygen comments to the code
+    * Fix many cases where UnlockMemory was not using handle returned by allocate memory to unlock
+    * Update memory functions to reflect handle to memory is being used.
+    * mfcDlgConfigure.cpp, & main.cpp, update scan loop to dispatch Windows messages to open DS dialog
+    * Add Extended Image Info
+
+
+2008-09-12 JFL Peripheral Solutions jimw@jflinc.com
+
+    * mfcDlgConfigure.cpp, Fix DSM Callback, to set flag and return right away
+    * mfcDlgConfigure.cpp, Display image info on dialog
+    * VerifySignature.cpp, DSMInterface.cpp, Added sample code to verify the Integrity of the DSM being loaded.
+    * TwainApp.cpp, Close the file with memory transfer so it can be displayed.
+    * TwainApp.cpp, TwainApp.h, Create updateIMAGEINFO as a separate function
+    * TwainApp.cpp, TwainApp.h, Create set_CapabilityXXXX functions for to simplify code.
+    * Statically link to MFC, remove dependencies from installer.
+    * Fix typos
+    * Use latest DSM merge module
+    * Increase build number
+
+
+2008-06-10 JFL Peripheral Solutions jimw@jflinc.com
+
+    * TwainApp.cpp List all DS, not just version 2.
+    * Update to newest twain.h file
+    
+    
+December 10, 2007 JFL Peripheral Solutions jimw@jflinc.com
+    * Initial Release.

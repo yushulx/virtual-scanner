@@ -1,0 +1,78 @@
+2009-03-20 JFL Peripheral Solutions mihailm@jflinc.com
+
+    * MAC version
+    * bug fixing
+
+2009-12-30 JFL Peripheral Solutions mihailm@jflinc.com
+
+    * Installer update - QT based
+    * bug fixing
+
+
+2009-12-22 JFL Peripheral Solutions mihailm@jflinc.com
+
+    * UI added - QT based
+    * bug fixing
+    * Custom DS support
+    * New capabilities added
+
+
+2009-07-16 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Update installer to use newest DSM merge module
+    * Update 64bit Windows installer to install both 32bit and 64bit DS
+
+2008-12-23 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Add Doxygen comments to the code
+    * Fix many cases where UnlockMemory was not using handle returned by allocate memory to unlock
+    * Update memory functions to reflect handle to memory is being used.
+
+
+2008-11-26 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Update TW_SETUPMEMXFER MSG_GET to reflect the current minimum memory requirements to do a memory transfer.
+
+
+2008-10-30 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Fix bug of not indexing Enumeration values correctly for int types.  
+        Causing MSG_SET with TWON_ENUMERATION to fail
+    * Always Enable DS without UI even when TW_USERINTERFACE.ShowUI is TRUE.
+
+    
+2008-10-23 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Don't allow updating capabilities when CurrentState >= dsState_XferReady.
+    * Fix bug of not setting condition code correctly in some cases.
+    * Add function to Validate set capabilities before they are committed.
+    * Do not allow exferCount of 0 or less than -1
+    * Constrain Frames to within the min width and height of the scanner Physical width and height of the scanner.
+    * Fix bug with InternalFrame constructor using SupportedSize not generating correct size frame.
+    * Add support for TW_UINT32 in TWAINContainerInt class.
+
+
+2008-09-29 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Fix several bugs with MSG_SET and TWON_ENUMERATION containers when bad data is used.
+      TWAINContainerInt.cpp, TWAINContainerFix32.cpp, TWAINContainerInt.cpp
+
+    
+2008-09-12 JFL Peripheral Solutions jimw@jflinc.com
+
+    * Fix typo
+    * add mechanism to Validate TWON_ONEVALUES
+    * Use latest DSM merge module
+    * Increase build number
+
+
+December 10, 2007 JFL Peripheral Solutions jimw@jflinc.com
+    * Initial Release.
+
+
+February 15, 2008 JFL Peripheral Solutions jimw@jflinc.com
+    * Fix state transition error, reported by Mark.  
+      DS was not being updated to proper state when the App is using callback to get image after receiving XferReady.
+      CTWAINDS_Base.cpp
+      CTWAINDS_FreeeImage.cpp
+

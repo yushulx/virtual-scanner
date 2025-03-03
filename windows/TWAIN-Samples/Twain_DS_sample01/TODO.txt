@@ -1,0 +1,21 @@
+April 22, 2010 JFL Peripheral Solutions jimw@jflinc.com 
+===============================
+
+Base class:
+ - Create a mechanism for handling multiple dependent capabilities efficiently.
+ For example: Compression setting are based on the current selected values for
+ Transfer Mechanism, Pixel Type, Bit Depth, and File Format.  The DS should be able
+ to remember different settings for each combination.
+   
+ - Implement compression transfer.
+
+Derived class:
+- Implement compression
+
+- Some functions that are implemented in the derived class CTWAINDS_FreeImage
+could be migrated to the base class CTWAINDS_Base to be used by all.  Evaluate
+functions to determine if migration is possible.
+
+
+For UI separation / Implementation:
+ - Create Windows Form UI
