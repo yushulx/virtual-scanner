@@ -55,7 +55,7 @@ convert test.jpg test.pnm
     ![Dynamic Web TWAIN Linux Virtual Scanner](https://www.dynamsoft.com/codepool/img/2025/02/sane-virtual-scanner.png)
 
 ## Troubleshooting
-Run `SANE_DEBUG_CUSTOM_SCANNER=255 scanimage -L` for detailed debugging information
+Run `SANE_DEBUG_DLL=255 scanimage -L` for detailed debugging information
 
 ## Reference
 - [test.c](https://gitlab.com/sane-project/backends/-/blob/master/backend/test.c) - SANE test backend implementation
