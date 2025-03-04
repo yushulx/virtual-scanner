@@ -5,7 +5,7 @@
 #include <math.h>
 
 #define CUSTOM_IMAGE_PATH "/home/xiao/Desktop/dwt/test.pnm"
-#define OPTION_NUM 1
+#define OPTION_NUM 0
 
 static SANE_Device mock_device = {
     .name = "my-scanner",
