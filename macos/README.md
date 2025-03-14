@@ -6,3 +6,4 @@ This project is ported from Apple's [Virtual Scanner project](https://developer.
 2. Build and run the project.
 3. Test the virtual scanner with `Image Capture` or [Dynamic Web TWAIN online demo](https://demo3.dynamsoft.com/web-twain/).
 
+    ![macOS virtual scanner](https://www.dynamsoft.com/codepool/img/2025/03/macos-virtual-scanner.png)
