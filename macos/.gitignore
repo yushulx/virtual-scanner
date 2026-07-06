@@ -1,0 +1,5 @@
+build/
+dist/
+*.xcuserstate
+DerivedData/
+.venv/

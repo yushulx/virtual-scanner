@@ -90,6 +90,13 @@ virtualButtonCallback(
 
 - (CGColorSpaceRef)newColorspaceForCurrentFunctionalUnitSettings:(unsigned int*)bitsPerComponent andBitsPerPixel:(unsigned int*)bitsPerPixel;
 
+// Auto-cycling through bundled sample images when no explicit selection is set
+- (NSString*)explicitSelectionImagePath;
+- (NSArray*)bundledSampleImagePaths;
+- (NSInteger)currentCycleIndex;
+- (void)persistCycleIndex:(NSInteger)index;
+- (NSArray*)beginScanJobImagePathsForADF:(BOOL)isADF;
+
 // Methods to handle button presses on the device
 - (void)startReceivingButtonPressesFromDevice;
 - (void)stopReceivingButtonPressesFromDevice;
@@ -419,6 +426,176 @@ virtualButtonCallback(
     self.selectedFunctionalUnitTypeString = NULL;
     
     [super dealloc];
+}
+
+#pragma mark -
+//------------------------------------------------------------------------------------------- resolvedSampleImageFilePath
+// Allows an external client (e.g. the Python verification script) to pick which bundled sample
+// image should be returned for the next scan, by writing its name (or an absolute path) into a
+// small selection file. If no explicit selection is present, VirtualScanner automatically cycles
+// through the bundled sample images (Resources/SampleImages), so that clients with no way to set
+// the selection file themselves (e.g. the Dynamic Web TWAIN online demo) still see a different
+// image each time the Scan button is clicked. Falls back to the default sampleImageFilePath
+// (test.tiff) only if no bundled sample images can be found at all.
+//
+// This method is NON-ADVANCING: it returns the image for the current cycle position without
+// changing it. The cycle position is advanced by beginScanJobImagePathsForADF:, which is called
+// once per scan job from startScanningWithParams:.
+
+- (NSString*)explicitSelectionImagePath
+{
+    NSString*    selectionFilePath = [NSHomeDirectory() stringByAppendingPathComponent:
+                                          @"Library/Application Support/VirtualScanner/selected_image.txt"];
+    NSString*    selection         = [NSString stringWithContentsOfFile:selectionFilePath
+                                                                 encoding:NSUTF8StringEncoding
+                                                                    error:NULL];
+    struct stat  status;
+
+    selection = [selection stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+    if ( [selection length] == 0 )
+        return nil;
+
+    // If the selection is already an absolute path to an existing file, use it directly.
+    if ( [selection isAbsolutePath] && ( stat( [selection UTF8String], &status ) == 0 ) )
+        return selection;
+
+    // Otherwise, treat the selection as the name of an image bundled under Resources/SampleImages.
+    NSString* bundledPath = [[NSBundle mainBundle] pathForResource:[selection stringByDeletingPathExtension]
+                                                              ofType:[selection pathExtension]
+                                                         inDirectory:@"SampleImages"];
+
+    if ( bundledPath && ( stat( [bundledPath UTF8String], &status ) == 0 ) )
+        return bundledPath;
+
+    return nil;
+}
+
+- (NSArray*)bundledSampleImagePaths
+{
+    NSString* imagesDir = [[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:@"SampleImages"];
+    BOOL      isDir     = NO;
+
+    if ( ![[NSFileManager defaultManager] fileExistsAtPath:imagesDir isDirectory:&isDir] || !isDir )
+        return [NSArray array];
+
+    NSArray*        rawNames = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:imagesDir error:NULL];
+    NSMutableArray* names    = [NSMutableArray array];
+
+    for ( NSString* name in rawNames )
+        if ( ![name hasPrefix:@"."] )
+            [names addObject:name];
+
+    // Sort numerically by filename stem when possible (1.png, 2.png, ... 11.png) so the cycle
+    // order matches the order shown by Scripts/verify_scanner.py --list-images.
+    [names sortUsingComparator:^NSComparisonResult(NSString* a, NSString* b) {
+        NSInteger aNum = [[a stringByDeletingPathExtension] integerValue];
+        NSInteger bNum = [[b stringByDeletingPathExtension] integerValue];
+
+        if ( aNum > 0 && bNum > 0 )
+        {
+            if ( aNum < bNum ) return NSOrderedAscending;
+            if ( aNum > bNum ) return NSOrderedDescending;
+            return NSOrderedSame;
+        }
+
+        return [a compare:b];
+    }];
+
+    NSMutableArray* paths = [NSMutableArray arrayWithCapacity:[names count]];
+    for ( NSString* name in names )
+        [paths addObject:[imagesDir stringByAppendingPathComponent:name]];
+
+    return paths;
+}
+
+- (NSString*)cycleIndexFilePath
+{
+    return [NSHomeDirectory() stringByAppendingPathComponent:
+                @"Library/Application Support/VirtualScanner/scan_cycle_index.txt"];
+}
+
+- (NSInteger)currentCycleIndex
+{
+    NSString* indexContents = [NSString stringWithContentsOfFile:[self cycleIndexFilePath]
+                                                        encoding:NSUTF8StringEncoding
+                                                           error:NULL];
+    return indexContents ? [indexContents integerValue] : 0;
+}
+
+- (void)persistCycleIndex:(NSInteger)index
+{
+    NSString* indexFilePath = [self cycleIndexFilePath];
+    NSString* indexDir      = [indexFilePath stringByDeletingLastPathComponent];
+
+    [[NSFileManager defaultManager] createDirectoryAtPath:indexDir withIntermediateDirectories:YES attributes:nil error:NULL];
+    [[NSString stringWithFormat:@"%ld", (long)index] writeToFile:indexFilePath
+                                                      atomically:YES
+                                                        encoding:NSUTF8StringEncoding
+                                                           error:NULL];
+}
+
+- (NSString*)resolvedSampleImageFilePath
+{
+    NSString* explicit = [self explicitSelectionImagePath];
+    if ( explicit )
+        return explicit;
+
+    NSArray* images = [self bundledSampleImagePaths];
+    if ( [images count] > 0 )
+    {
+        NSInteger index = [self currentCycleIndex];
+        if ( index < 0 || index >= (NSInteger)[images count] )
+            index = 0;
+        return [images objectAtIndex:index];
+    }
+
+    return self.sampleImageFilePath;
+}
+
+//------------------------------------------------------------------------------------ beginScanJobImagePathsForADF:
+// Returns the ordered list of sample-image file paths to scan for a single scan job, and advances
+// the persistent cycle index so that the NEXT scan job starts where this one left off.
+//
+//  - If an explicit selection file is set, always returns just that one image (no cycling).
+//  - For a flatbed scan (isADF == NO), returns a single image at the current cycle position and
+//    advances the cycle by one, so each Scan click returns the next image.
+//  - For an ADF/document-feeder scan (isADF == YES), returns ALL bundled images (starting at the
+//    current cycle position and wrapping), so a single ADF scan produces one page per bundled
+//    image instead of a hard-coded number of pages.
+
+- (NSArray*)beginScanJobImagePathsForADF:(BOOL)isADF
+{
+    NSString* explicit = [self explicitSelectionImagePath];
+    if ( explicit )
+        return [NSArray arrayWithObject:explicit];
+
+    NSArray* images = [self bundledSampleImagePaths];
+    if ( [images count] == 0 )
+        return self.sampleImageFilePath ? [NSArray arrayWithObject:self.sampleImageFilePath] : [NSArray array];
+
+    NSInteger count = (NSInteger)[images count];
+    NSInteger start = [self currentCycleIndex];
+    if ( start < 0 || start >= count )
+        start = 0;
+
+    NSMutableArray* jobPaths = [NSMutableArray array];
+
+    if ( isADF )
+    {
+        // Scan every bundled image once, in cycle order.
+        for ( NSInteger i = 0; i < count; i++ )
+            [jobPaths addObject:[images objectAtIndex:( ( start + i ) % count )]];
+
+        [self persistCycleIndex:( ( start + count ) % count )]; // == start; keep next job aligned
+    }
+    else
+    {
+        [jobPaths addObject:[images objectAtIndex:start]];
+        [self persistCycleIndex:( ( start + 1 ) % count )];
+    }
+
+    return jobPaths;
 }
 
 #pragma mark -
@@ -904,42 +1081,28 @@ bail:
     //512k will be used for each band unless overridden by band size settings from the client
     double    maxBandByteSize = self.maxProgressBandSize;
     
-    //Loadable test image
-    CFURLRef          fileRef     = CFURLCreateWithFileSystemPath(
-                                                    kCFAllocatorDefault,
-                                                    (CFStringRef)(self.sampleImageFilePath),
-                                                    kCFURLPOSIXPathStyle,
-                                                    0
-                                                );
-    
-    CGImageSourceRef  imageSrcRef = CGImageSourceCreateWithURL( fileRef, NULL );
+    // Determine whether the client selected the document feeder (ADF) functional unit ("3").
+    BOOL      isADF          = [self.selectedFunctionalUnitTypeString isEqualToString:@"3"];
 
-    // set up image io if we are doing final scan
-    NSDictionary*     metaData    = (NSMutableDictionary*)CGImageSourceCopyPropertiesAtIndex( imageSrcRef, 0, NULL );
-        
+    // Resolve the ordered list of sample images to scan for this job. For a flatbed scan this is a
+    // single image at the current cycle position (and the cycle advances by one, so the next Scan
+    // returns a different image); for an ADF scan it is every bundled image, so the feeder produces
+    // one page per bundled image. This call also advances the persistent cycle index for the next job.
+    NSArray*  jobImagePaths  = [self beginScanJobImagePathsForADF:isADF];
+
+    if ( [jobImagePaths count] == 0 )
+        return kICADeviceInternalErr;
+
+    // Image resources are (re)loaded per page inside the loop so each ADF page can be a different image.
+    CFURLRef          fileRef     = NULL;
+    CGImageSourceRef  imageSrcRef = NULL;
+    NSDictionary*     metaData    = NULL;
+    NSNumber*         imageWidth  = NULL;
+    NSNumber*         imageHeight = NULL;
+
     //Create a data provider so we can skip around the bitmap
     CGDataProviderSequentialCallbacks scanCallbacks = {0, dpGetBytes, dpSkipBytes, dpRewind, dpReleaseProvider};
     CGDataProviderRef                 scanDataProvider;
-    
-    //Grab our source images parameters so we can stretch.
-    //For now, we don't maintain any aspect ratio, but in the future we could figure out which aspect to clip to.
-    NSNumber* imageWidth  = [metaData objectForKey:@"PixelWidth"];
-    NSNumber* imageHeight = [metaData objectForKey:@"PixelHeight"];
-    
-    if( !( imageWidth && imageHeight ) )
-    {
-        
-        if( metaData )
-            [metaData release];
-        
-        if( fileRef )
-            CFRelease ( fileRef );
-        
-        if( imageSrcRef )
-            CFRelease ( imageSrcRef );
-        
-        return kICADeviceInternalErr;
-    }
     
     double        scanImageDPIRatioWidth  =  ( ( self.physicalWidth / self.xNativeResolution ) * (double)xDPI);
     double        scanImageDPIRatioHeight =  ( ( self.physicalHeight / self.yNativeResolution ) * (double)yDPI);
@@ -947,12 +1110,36 @@ bail:
     unsigned int  scanImageWidth          = [[_scanImageSettings objectForKey:@"scanImageWidth"] unsignedIntValue];
     unsigned int  scanImageHeight         = [[_scanImageSettings objectForKey:@"scanImageHeight"] unsignedIntValue];
     
-    // If we wanted to specify more than one scan here for document feeder, we could do it as an example.
-    int documentFeederScans = 2;
+    // One page is scanned per entry in jobImagePaths (1 for flatbed, N for ADF/document feeder).
+    int         documentFeederScans = (int)[jobImagePaths count];
+    NSUInteger  currentPageIndex    = 0;
 
     do
     {
         CGImageRef  imageRefFinal = NULL;
+
+        // (Re)load the source image for this page from the job list so ADF pages differ.
+        NSString* currentPageImagePath = [jobImagePaths objectAtIndex:
+                                              MIN( currentPageIndex, [jobImagePaths count] - 1 )];
+
+        fileRef     = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
+                                                     (CFStringRef)currentPageImagePath,
+                                                     kCFURLPOSIXPathStyle, 0 );
+        imageSrcRef = CGImageSourceCreateWithURL( fileRef, NULL );
+        metaData    = (NSMutableDictionary*)CGImageSourceCopyPropertiesAtIndex( imageSrcRef, 0, NULL );
+
+        //Grab our source image's parameters so we can stretch.
+        imageWidth  = [metaData objectForKey:@"PixelWidth"];
+        imageHeight = [metaData objectForKey:@"PixelHeight"];
+
+        if ( !( imageWidth && imageHeight ) )
+        {
+            if ( metaData )    CFRelease( (CFTypeRef)metaData );
+            if ( fileRef )     CFRelease( fileRef );
+            if ( imageSrcRef ) CFRelease( imageSrcRef );
+
+            return kICADeviceInternalErr;
+        }
 
         // Set up image io if we are doing the final scan
         if ( !self.sendProgressNotificationsWithOverviewData )
@@ -1400,8 +1587,15 @@ bail:
         
         if( newcolorspace )
             CGColorSpaceRelease( newcolorspace );
+
+        // Release this page's image resources before loading the next page (ADF).
+        if ( metaData )    { CFRelease( (CFTypeRef)metaData ); metaData = NULL; }
+        if ( fileRef )     { CFRelease( fileRef ); fileRef = NULL; }
+        if ( imageSrcRef ) { CFRelease( imageSrcRef ); imageSrcRef = NULL; }
+
+        currentPageIndex++;
     } 
-    while ( ( [self.selectedFunctionalUnitTypeString isEqualToString:@"3"] ) && ( documentFeederScans > 0 ) && !userCancel );
+    while ( ( documentFeederScans > 0 ) && !userCancel );
     
     // send job done notification
     ICASendNotificationPB notePB        = {};
@@ -1722,7 +1916,7 @@ bail:
         
         //Loadable test image
         CFURLRef fileRef= CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
-                                                        (CFStringRef)(self.sampleImageFilePath),
+                                                        (CFStringRef)([self resolvedSampleImageFilePath]),
                                                         kCFURLPOSIXPathStyle, 0
                                                         );
         

@@ -206,6 +206,19 @@ typedef struct ICARawFileHeader
 */
 @property(readwrite,copy) NSString*           sampleImageFilePath;
 
+/*!
+  @method resolvedSampleImageFilePath
+  @abstract Returns the image file that should be used for the next scan.
+  @discussion Looks for a selection file (written by an external client, e.g. the Python
+  verification script) that names an image bundled under Resources/SampleImages. If no valid
+  selection is found, automatically cycles through the bundled sample images on every scan
+  (persisted across process launches), so clients with no way to write the selection file
+  themselves (e.g. the Dynamic Web TWAIN online demo) still see a different image on each scan.
+  Falls back to sampleImageFilePath (the default test image) only if no bundled sample images
+  can be found at all.
+*/
+- (NSString*)resolvedSampleImageFilePath;
+
 /*! 
   @property propertyListPath
   @abstract Path to scanner property plist file. This file contains information about functional units available on the scanner.

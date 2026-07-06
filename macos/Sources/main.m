@@ -107,7 +107,12 @@ int main(int argc, char *argv[])
     CFBundleRef bundle    = CFBundleGetMainBundle();
     NSString*   bundleID  = (NSString*)CFBundleGetIdentifier( bundle );
     
-    _gIsVirtualScanner = [bundleID isEqualToString:@"com.apple.VirtualScanner"];
+    // This executable is only ever built as the Virtual Scanner device module, regardless of the
+    // CFBundleIdentifier chosen for distribution (e.g. "com.dynamsoft.VirtualScanner" instead of
+    // Apple's original sample identifier "com.apple.VirtualScanner"), so always enable the
+    // virtual-scanner behavior (disk-arbitration session + self-registration when launched directly).
+    _gIsVirtualScanner = YES;
+    (void)bundleID;
     
     if ( _gIsVirtualScanner )
     {

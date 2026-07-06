@@ -132,29 +132,53 @@ _ICD_ScannerOpenUSBDevice(
     
     if ( locationID == 0 )
     {
-        // Special Case - we were launched by XCode and hence locationID is 0.
-        
+        // Special Case - we were launched directly (e.g. by Xcode, or as a persistent background
+        // service) and hence locationID is 0.
+
         if ( _gIsVirtualScanner )
         {
-            UInt32 fakeLocation = 0;
-            
-            if ( gArgc == 2 )
-            {
-                int l = strlen( gArgv[1] );
-                
-                if ( l <= 4 )
-                {
-                    char* temp  = (char*)&fakeLocation;
-                    int   c     = 0;
-                    
-                    for ( c = 0; c < l; ++c )
-                        temp[c] = gArgv[1][c];
-                }
-            }
-            else
-                fakeLocation = 0xDEADBEEF;
+            // On modern macOS, asking icdd to connect a fabricated USB location via
+            // ICDConnectUSBDevice() is no longer honored without a real, matching IOKit device, so
+            // that round trip always fails here now ("Open Device Failed"), which would otherwise
+            // cause the framework to quit this process immediately. Since real discovery/opening of
+            // the Virtual Scanner by other processes now happens through the Bonjour TCP/IP path
+            // (_ICD_ScannerOpenTCPIPDevice, backed by the persistent Bonjour advertisement started in
+            // main()), we satisfy this internal self-test locally instead, so the process stays alive
+            // in the background rather than exiting instantly.
 
-            err = ICDConnectUSBDevice( fakeLocation );
+            NSNumber*        locIDNum = [NSNumber numberWithUnsignedInt:0xDEADBEEF];
+            VirtualScanner*  vScanner = [[VirtualScanner alloc] init];
+
+            if ( vScanner )
+            {
+                newDeviceObjectInfo->privateData                  = (Ptr)vScanner;
+                newDeviceObjectInfo->flags                        = 0;
+                newDeviceObjectInfo->thumbnailSize                = 1;   // All scanner clients are based on ImageCaptureCore framework, which dynamically determines size of thumbnails. So, we do not need to know the exact size of the thumbnail. Set this to 1 if we have a thumbnail.
+                newDeviceObjectInfo->dataSize                     = 0;
+                newDeviceObjectInfo->icaObjectInfo.objectType     = kICADevice;
+                newDeviceObjectInfo->icaObjectInfo.objectSubtype  = kICADeviceScanner;
+
+                strlcpy( (char*)newDeviceObjectInfo->name, [vScanner.name UTF8String], sizeof(newDeviceObjectInfo->name) );
+
+                NSDateFormatter*  df  = [[NSDateFormatter alloc] initWithDateFormat:@"%Y:%m:%d %H:%M:%S" allowNaturalLanguage:YES];
+                NSDate*           d   = [NSDate date];
+                NSString*         ds  = [df stringFromDate:d];
+
+                if ( ds )
+                    strlcpy( (char*)(newDeviceObjectInfo->creationDate), [ds UTF8String], sizeof(newDeviceObjectInfo->creationDate) );
+                else
+                    strlcpy( (char*)(newDeviceObjectInfo->creationDate), "0000:00:00 00:00:00", sizeof(newDeviceObjectInfo->creationDate) );
+
+                [df release];
+
+                // Cache device object info in our device object
+                vScanner.deviceObjectInfo = newDeviceObjectInfo;
+
+                pthread_mutex_lock( &_gScannersMutex );
+                [_gScannersDictionary setObject:vScanner forKey:locIDNum];
+                pthread_mutex_unlock( &_gScannersMutex );
+                err = noErr;
+            }
         }
         else
         {

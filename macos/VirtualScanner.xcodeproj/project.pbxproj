@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1228BCBA134274F70041757F /* DeviceInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1228BCB9134274F70041757F /* DeviceInfo.plist */; };
+		12FFA1000000000000000002 /* SampleImages in Resources */ = {isa = PBXBuildFile; fileRef = 12FFA1000000000000000001 /* SampleImages */; };
 		129724CF1240375100A3782E /* ScannedImage.m in Sources */ = {isa = PBXBuildFile; fileRef = 129724CE1240375100A3782E /* ScannedImage.m */; };
 		12A7D61A11B832FC00B0C99F /* ICADevices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 12A7D61911B832FC00B0C99F /* ICADevices.framework */; };
 		12A7D61E11B8330400B0C99F /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 12A7D61D11B8330400B0C99F /* Carbon.framework */; };
@@ -27,6 +28,7 @@
 /* Begin PBXFileReference section */
 		1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = /System/Library/Frameworks/Cocoa.framework; sourceTree = "<absolute>"; };
 		1228BCB9134274F70041757F /* DeviceInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = DeviceInfo.plist; path = Resources/DeviceInfo.plist; sourceTree = "<group>"; };
+		12FFA1000000000000000001 /* SampleImages */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SampleImages; path = Resources/SampleImages; sourceTree = "<group>"; };
 		129724CD1240373C00A3782E /* ScannedImage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ScannedImage.h; path = Includes/ScannedImage.h; sourceTree = "<group>"; };
 		129724CE1240375100A3782E /* ScannedImage.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = ScannedImage.m; path = Sources/ScannedImage.m; sourceTree = "<group>"; };
 		12A7D61911B832FC00B0C99F /* ICADevices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ICADevices.framework; path = /System/Library/Frameworks/ICADevices.framework; sourceTree = "<absolute>"; };
@@ -160,6 +162,7 @@
 			isa = PBXGroup;
 			children = (
 				1228BCB9134274F70041757F /* DeviceInfo.plist */,
+				12FFA1000000000000000001 /* SampleImages */,
 				12EC720B121B742C00644724 /* English.lproj */,
 				12EC7178121B6E7000644724 /* test.tiff */,
 				12EC6E161219EF9D00644724 /* DeviceMatchingInfo.plist */,
@@ -208,8 +211,7 @@
 				LastUpgradeCheck = 0440;
 				TargetAttributes = {
 					8D1107260486CEB800E47090 = {
-						DevelopmentTeam = W6PESGXW9M;
-						ProvisioningStyle = Manual;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -242,6 +244,7 @@
 				12EC7179121B6E7000644724 /* test.tiff in Resources */,
 				12EC7210121B742C00644724 /* InfoPlist.strings in Resources */,
 				1228BCBA134274F70041757F /* DeviceInfo.plist in Resources */,
+				12FFA1000000000000000002 /* SampleImages in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -277,13 +280,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = W6PESGXW9M;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(SYSTEM_LIBRARY_DIR)/Frameworks/Carbon.framework/Versions/A/Frameworks",
 					"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks",
@@ -294,9 +295,8 @@
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = VirtualScanner_Prefix.pch;
 				INFOPLIST_FILE = "VirtualScanner-Info.plist";
-				INSTALL_PATH = "$(SYSTEM_LIBRARY_DIR)/Image Capture/Devices";
+				INSTALL_PATH = "/Library/Image Capture/Devices";
 				PRODUCT_NAME = VirtualScanner;
-				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = Debug;
 		};
@@ -304,12 +304,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = W6PESGXW9M;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(SYSTEM_LIBRARY_DIR)/Frameworks/Carbon.framework/Versions/A/Frameworks",
 					"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks",
@@ -319,9 +317,8 @@
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = VirtualScanner_Prefix.pch;
 				INFOPLIST_FILE = "VirtualScanner-Info.plist";
-				INSTALL_PATH = "$(SYSTEM_LIBRARY_DIR)/Image Capture/Devices";
+				INSTALL_PATH = "/Library/Image Capture/Devices";
 				PRODUCT_NAME = VirtualScanner;
-				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = Release;
 		};

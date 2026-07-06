@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string></string>
 	<key>CFBundleIdentifier</key>
-	<string>com.apple.${PRODUCT_NAME:rfc1034identifier}</string>
+	<string>com.dynamsoft.${PRODUCT_NAME:rfc1034identifier}</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -23,27 +23,16 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSBackgroundOnly</key>
-	<string>1</string>
+	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>${MACOSX_DEPLOYMENT_TARGET}</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-
-	<key>CFBundleIdentifier</key>
-    <string>com.apple.VirtualScanner</string>
-
-    <key>CFBundleExecutable</key>
-    <string>VirtualScanner</string>
-
-    <key>ICDeviceType</key>
-    <string>ICScannerDevice</string>
-
-    <key>LSBackgroundOnly</key>
-    <true/>
-
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
+	<key>ICDeviceType</key>
+	<string>ICScannerDevice</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Ported from Apple's Virtual Scanner sample code.</string>
 </dict>
 </plist>

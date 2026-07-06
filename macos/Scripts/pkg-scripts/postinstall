@@ -1,0 +1,14 @@
+#!/bin/bash
+#
+# postinstall
+#
+# Runs after the .pkg installer copies VirtualScanner.app into
+# /Library/Image Capture/Devices. Restarts the Image Capture agent
+# processes so the new virtual scanner is detected without a reboot.
+#
+set -e
+
+killall imagecaptureagent >/dev/null 2>&1 || true
+killall ICAgent >/dev/null 2>&1 || true
+
+exit 0
