@@ -77,6 +77,34 @@ if [[ "$SCOPE" == "user" && -d "$SYSTEM_COPY" ]]; then
     || echo "warning: failed to update the system-scope copy; run: sudo ./Scripts/build_and_install.sh --system"
 fi
 
+LAUNCH_AGENT_ID="com.dynamsoft.VirtualScanner"
+LAUNCH_AGENT_PLIST="${LAUNCH_AGENT_ID}.plist"
+LAUNCH_AGENT_SRC="$SCRIPT_DIR/$LAUNCH_AGENT_PLIST"
+
+if [[ ! -f "$LAUNCH_AGENT_SRC" ]]; then
+  echo "error: LaunchAgent plist not found at $LAUNCH_AGENT_SRC" >&2
+  exit 1
+fi
+
+if [[ "$SCOPE" == "system" ]]; then
+  LAUNCH_AGENT_DEST_DIR="/Library/LaunchAgents"
+  echo "==> Installing Bonjour LaunchAgent to $LAUNCH_AGENT_DEST_DIR"
+  sudo mkdir -p "$LAUNCH_AGENT_DEST_DIR"
+  sudo cp "$LAUNCH_AGENT_SRC" "$LAUNCH_AGENT_DEST_DIR/$LAUNCH_AGENT_PLIST"
+else
+  LAUNCH_AGENT_DEST_DIR="$HOME/Library/LaunchAgents"
+  echo "==> Installing Bonjour LaunchAgent to $LAUNCH_AGENT_DEST_DIR"
+  mkdir -p "$LAUNCH_AGENT_DEST_DIR"
+  cp "$LAUNCH_AGENT_SRC" "$LAUNCH_AGENT_DEST_DIR/$LAUNCH_AGENT_PLIST"
+fi
+
+# Reload the LaunchAgent for the current login session.
+# bootout first (ignore error if it was not loaded), then bootstrap.
+GUI_TARGET="gui/$(id -u)"
+launchctl bootout "${GUI_TARGET}/${LAUNCH_AGENT_ID}" 2>/dev/null || true
+launchctl bootstrap "${GUI_TARGET}" "${LAUNCH_AGENT_DEST_DIR}/${LAUNCH_AGENT_PLIST}"
+echo "==> Bonjour LaunchAgent loaded: dns-sd is now advertising 'Virtual Scanner' on _scanner._tcp."
+
 echo "==> Restarting Image Capture services so the new device is discovered"
 killall VirtualScanner >/dev/null 2>&1 || true
 killall icdd >/dev/null 2>&1 || true
@@ -84,4 +112,5 @@ killall imagecaptureagent >/dev/null 2>&1 || true
 killall ICAgent >/dev/null 2>&1 || true
 
 echo "==> Done. VirtualScanner installed at: $DEST_DIR/$APP_NAME"
+echo "    Bonjour LaunchAgent installed at:  $LAUNCH_AGENT_DEST_DIR/$LAUNCH_AGENT_PLIST"
 echo "    Open Image Capture, or run the Python verification script, to confirm it is detected."
