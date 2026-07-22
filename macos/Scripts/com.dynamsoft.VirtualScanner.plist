@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.dynamsoft.VirtualScanner.plist
+  LaunchAgent — installed by build_and_install.sh to ~/Library/LaunchAgents/
+  (or /Library/LaunchAgents/ for a system-scope install).
+
+  Keeps a dns-sd process running that advertises VirtualScanner on the local
+  Bonjour _scanner._tcp. service type.  icdd (the Image Capture daemon) watches
+  for exactly this service type; when it sees the advertisement it looks up the
+  matching device-module bundle in /Library/Image Capture/Devices (or
+  ~/Library/Image Capture/Devices) using DeviceMatchingInfo.plist, then launches
+  VirtualScanner.app with proper TCP/IP parameters — which is the only path that
+  succeeds on modern macOS (manually launching the module without icdd-supplied
+  launch params results in a "Launch Params Missing" rejection).
+
+  TXT records must match the BonjourNetwork entry in DeviceMatchingInfo.plist:
+    mdl = Virtual Scanner
+    mfg = Apple
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dynamsoft.VirtualScanner</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/dns-sd</string>
+        <!-- -R: register a named service -->
+        <string>-R</string>
+        <!-- Service name (arbitrary, human-readable) -->
+        <string>Virtual Scanner</string>
+        <!-- Service type matching DeviceMatchingInfo.plist BonjourNetwork key -->
+        <string>_scanner._tcp.</string>
+        <!-- Domain: local-only Bonjour -->
+        <string>local</string>
+        <!-- Port: icdd passes this to the device module; VirtualScanner ignores it -->
+        <string>9500</string>
+        <!-- TXT records — must match ICABonjourTXTRecordKey in DeviceMatchingInfo.plist -->
+        <string>mdl=Virtual Scanner</string>
+        <string>mfg=Apple</string>
+        <!-- Standard scanner TXT records; scannerAvailable=1 marks the device as ready -->
+        <string>scannerAvailable=1</string>
+        <string>txtvers=1</string>
+    </array>
+
+    <!-- Start advertising as soon as the agent is loaded -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart dns-sd if it ever exits unexpectedly -->
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
