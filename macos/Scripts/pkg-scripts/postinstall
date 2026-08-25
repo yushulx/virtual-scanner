@@ -2,13 +2,82 @@
 #
 # postinstall
 #
-# Runs after the .pkg installer copies VirtualScanner.app into
-# /Library/Image Capture/Devices. Restarts the Image Capture agent
-# processes so the new virtual scanner is detected without a reboot.
+# Runs as root after the .pkg payload is installed. This is what makes the
+# whole flow work with a single installer run:
 #
-set -e
+#   1. Activates the Bonjour advertisement LaunchAgent (installed to
+#      /Library/LaunchAgents by the pkg) for the currently logged-in user, so
+#      icdd can discover the device right now. The /Library/LaunchAgents copy
+#      also loads automatically for every user at their next login, so the
+#      scanner survives reboots.
+#   2. Restarts the Image Capture agent processes so the freshly installed
+#      system-scope module is picked up immediately.
+#   3. Best-effort: ensures the Dynamic Web TWAIN Service is available (the
+#      runtime the browser demo / verify_scanner.py talk to). Honors the
+#      INSTALL_DWT_SERVICE setting in the packaged scanner.config
+#      (auto|always|never) and skips gracefully if the download is unavailable.
+#
+set -u
 
+CONFIG="/Library/Application Support/VirtualScanner/scanner.config"
+PLIST="/Library/LaunchAgents/com.dynamsoft.virtualscanner.bonjour.plist"
+DWT_URL="https://demo.dynamsoft.com/DWT/DWTResources/dist/DynamsoftServiceSetup.pkg"
+DWT_INSTALL="auto"
+
+# Read the packaged config if present (it may override DWT policy/URL).
+if [[ -f "$CONFIG" ]]; then
+  # shellcheck disable=SC1090
+  source "$CONFIG"
+  DWT_URL="${DWT_SERVICE_PKG_URL:-$DWT_URL}"
+  DWT_INSTALL="${INSTALL_DWT_SERVICE:-$DWT_INSTALL}"
+fi
+
+dwt_running() {
+  curl -s -m 2 -o /dev/null -w "%{http_code}" "http://127.0.0.1:18622/" 2>/dev/null | grep -q "^200$"
+}
+
+# --- 1. Bonjour advertisement -------------------------------------------------
+# Load the agent for the logged-in GUI user so the scanner appears immediately;
+# the /Library/LaunchAgents copy also auto-loads for all users at login.
+if [[ -f "$PLIST" ]]; then
+  CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
+  if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" ]]; then
+    CONSOLE_UID="$(id -u "$CONSOLE_USER" 2>/dev/null || true)"
+    if [[ -n "$CONSOLE_UID" ]]; then
+      launchctl bootout "gui/$CONSOLE_UID" "$PLIST" >/dev/null 2>&1 || true
+      launchctl bootstrap "gui/$CONSOLE_UID" "$PLIST" >/dev/null 2>&1 || true
+    fi
+  fi
+fi
+
+# --- 2. Restart Image Capture services ----------------------------------------
+killall VirtualScanner >/dev/null 2>&1 || true
+killall icdd >/dev/null 2>&1 || true
 killall imagecaptureagent >/dev/null 2>&1 || true
 killall ICAgent >/dev/null 2>&1 || true
 
+# --- 3. Dynamic Web TWAIN Service (best-effort) --------------------------------
+if [[ "$DWT_INSTALL" != "never" ]]; then
+  if dwt_running; then
+    echo "postinstall: Dynamic Web TWAIN Service already available."
+  else
+    echo "postinstall: Dynamic Web TWAIN Service not detected; attempting install..."
+    TMP_DIR="$(mktemp -d 2>/dev/null || echo /tmp)"
+    TMP_PKG="$TMP_DIR/DynamsoftServiceSetup.pkg"
+    if curl -L -sS -m 300 -o "$TMP_PKG" "$DWT_URL" 2>/dev/null && [[ -s "$TMP_PKG" ]]; then
+      if installer -pkg "$TMP_PKG" -target / >/dev/null 2>&1; then
+        echo "postinstall: Dynamic Web TWAIN Service installed."
+      else
+        echo "postinstall: warning: Dynamic Web TWAIN Service install failed." >&2
+      fi
+      rm -f "$TMP_PKG"
+    else
+      echo "postinstall: warning: could not download Dynamic Web TWAIN Service ($DWT_URL)." >&2
+      echo "            Install it manually, or run Scripts/setup.sh --skip-build." >&2
+    fi
+    rm -rf "$TMP_DIR"
+  fi
+fi
+
+echo "postinstall: VirtualScanner setup complete."
 exit 0

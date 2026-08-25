@@ -19,6 +19,12 @@ talks to) is installed and running, and prepares the Python environment:
 > already installed, `setup.sh` downloads and installs it and asks for your
 > admin password once. Pass `--skip-dwt` to skip that, `--skip-python` to skip
 > the Python environment, or `--skip-build` to only do the DWT/Python parts.
+>
+> **No Xcode?** Use the single-installer package instead (see
+> [Option 2](#option-2-build-a-single-command-installer-package-no-compile-needed)):
+> someone builds `dist/VirtualScanner-1.0.pkg` once, and on the target Mac a
+> single `sudo installer -pkg ... -target /` does everything — app + Bonjour +
+> Dynamic Web TWAIN Service — with no compiling.
 
 Then test the virtual scanner with `Image Capture` or the
 [Dynamic Web TWAIN online demo](https://demo3.dynamsoft.com/web-twain/):
@@ -70,15 +76,27 @@ Pass `--system` to install machine-wide instead (requires `sudo`):
 ```
 This installs into `/Library/Image Capture/Devices` for every user on the Mac.
 
-### Option 2: Build a distributable installer package
+### Option 2: Build a single-command installer package (no compile needed)
 ```bash
-./Scripts/package.sh [version]
+./Scripts/package.sh [version] [--build] [--no-dwt]
 ```
-Builds the Release configuration and produces `dist/VirtualScanner-<version>.pkg`,
-a standard macOS installer that places `VirtualScanner.app` in
-`/Library/Image Capture/Devices` and restarts Image Capture services via a
-postinstall script. Share this `.pkg` with other Macs; install it with:
+By default `package.sh` **reuses the app already built** under `build/` — it
+does **not** compile. (Pass `--build` to force a fresh Release build, or
+`--no-dwt` to prevent the installer from installing the Dynamic Web TWAIN
+Service.) It produces `dist/VirtualScanner-<version>.pkg`, a single installer
+that contains the **entire flow**:
+
+- `/Library/Image Capture/Devices/VirtualScanner.app` — the device module (prebuilt)
+- `/Library/LaunchAgents/com.dynamsoft.virtualscanner.bonjour.plist` — Bonjour auto-start
+- `/Library/Application Support/VirtualScanner/` — `scanner.config` + `verify_scanner.py` + `requirements.txt`
+
+Its `postinstall` script then activates the Bonjour advertisement for the
+logged-in user, restarts Image Capture so the device appears immediately, and
+(best-effort) installs the Dynamic Web TWAIN Service if it is missing — so a
+fresh Mac is fully working after a single install:
+
 ```bash
+# On the target Mac (no Xcode, no compiling):
 sudo installer -pkg dist/VirtualScanner-1.0.pkg -target /
 ```
 
