@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.dynamsoft.virtualscanner.bonjour.plist
+
+  Keeps the VirtualScanner Bonjour advertisement alive across reboots.
+
+  macOS discovers the VirtualScanner ICA device via Bonjour (_scanner._tcp),
+  not from the mere presence of VirtualScanner.app on disk. `icdd`'s Bonjour
+  discovery only finds the device while a `dns-sd -R "Virtual Scanner"
+  _scanner._tcp ...` advertisement is running. A manually-started dns-sd dies
+  when the terminal closes / the Mac restarts, which is why the device can
+  silently disappear after a reboot.
+
+  This LaunchAgent runs in the logged-in user's session and restarts the
+  advertisement automatically (KeepAlive). The TXT record keys (mdl/mfg) must
+  match the BonjourNetwork matcher in Resources/DeviceMatchingInfo.plist.
+
+  Installed to: ~/Library/LaunchAgents/ by Scripts/build_and_install.sh
+  Manage manually with:
+    launchctl bootout   gui/$(id -u) "$HOME/Library/LaunchAgents/com.dynamsoft.virtualscanner.bonjour.plist"
+    launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.dynamsoft.virtualscanner.bonjour.plist"
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.dynamsoft.virtualscanner.bonjour</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/dns-sd</string>
+		<string>-R</string>
+		<string>Virtual Scanner</string>
+		<string>_scanner._tcp</string>
+		<string>local</string>
+		<string>9500</string>
+		<string>mdl=Virtual Scanner</string>
+		<string>mfg=Apple</string>
+	</array>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>KeepAlive</key>
+	<true/>
+
+	<key>ProcessType</key>
+	<string>Background</string>
+
+	<key>Nice</key>
+	<integer>5</integer>
+
+	<key>StandardOutPath</key>
+	<string>/tmp/virtualscanner-bonjour.log</string>
+
+	<key>StandardErrorPath</key>
+	<string>/tmp/virtualscanner-bonjour.log</string>
+</dict>
+</plist>

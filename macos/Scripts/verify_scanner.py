@@ -39,12 +39,41 @@ except ImportError:
 
 # Default trial license used for local verification. Replace with your own key from:
 # https://www.dynamsoft.com/customer/license/trialLicense/?product=dcv&package=cross-platform
-DEFAULT_LICENSE_KEY = (
+#
+# NOTE: The default below is read from Scripts/scanner.config (this file is the
+# fallback). The bundled trial key has EXPIRED, so prefer your own key.
+_FALLBACK_LICENSE_KEY = (
     "DLS2eyJoYW5kc2hha2VDb2RlIjoiMjAwMDAxLTE2NDk4Mjk3OTI2MzUiLCJvcmdhbml6YXRpb25JRCI6"
     "IjIwMDAwMSIsInNlc3Npb25QYXNzd29yZCI6IndTcGR6Vm05WDJrcEQ5YUoifQ=="
 )
-DEFAULT_HOST = "http://127.0.0.1:18622"
+_FALLBACK_HOST = "http://127.0.0.1:18622"
 DEVICE_NAME_HINT = "Virtual Scanner"
+
+
+def load_config():
+    """Load Scripts/scanner.config (next to this file) into a dict.
+
+    Simple key=value format, '#' comments, optional quotes. Missing file or
+    keys are tolerated; callers fall back to built-in defaults.
+    """
+    cfg = {}
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanner.config")
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                cfg[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return cfg
+
+
+_CONFIG = load_config()
+DEFAULT_LICENSE_KEY = _CONFIG.get("DWT_LICENSE_KEY", _FALLBACK_LICENSE_KEY)
+DEFAULT_HOST = _CONFIG.get("DWT_SERVICE_URL", _FALLBACK_HOST)
 
 # Candidate install locations for VirtualScanner.app, checked in order.
 INSTALLED_APP_PATHS = [

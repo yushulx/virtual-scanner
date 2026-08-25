@@ -4,17 +4,57 @@ This project is ported from Apple's [Virtual Scanner project](https://developer.
 https://github.com/user-attachments/assets/87718501-f96a-49cb-b466-8ffe2200b76e
 
 ## How to Use
-1. Import the project into Xcode.
-2. Build and run the project.
-3. Test the virtual scanner with `Image Capture` or [Dynamic Web TWAIN online demo](https://demo3.dynamsoft.com/web-twain/).
 
-    ![macOS virtual scanner](https://www.dynamsoft.com/codepool/img/2025/03/macos-virtual-scanner.png)
+### Quick start (one command)
+On a fresh Mac, one script does everything needed to start scanning — builds
+and installs the device module, starts the Bonjour advertisement, makes sure
+the Dynamic Web TWAIN Service (the runtime the browser demo / verify script
+talks to) is installed and running, and prepares the Python environment:
+
+```bash
+./Scripts/setup.sh
+```
+
+> Requires Xcode (for `xcodebuild`). If the Dynamic Web TWAIN Service is not
+> already installed, `setup.sh` downloads and installs it and asks for your
+> admin password once. Pass `--skip-dwt` to skip that, `--skip-python` to skip
+> the Python environment, or `--skip-build` to only do the DWT/Python parts.
+
+Then test the virtual scanner with `Image Capture` or the
+[Dynamic Web TWAIN online demo](https://demo3.dynamsoft.com/web-twain/):
+
+![macOS virtual scanner](https://www.dynamsoft.com/codepool/img/2025/03/macos-virtual-scanner.png)
+
+All bundled sample images and configuration live in this repo
+(`Resources/SampleImages/`, `Scripts/scanner.config`), so a fresh checkout is
+self-contained — no manual file copying needed.
+
+### Configuration
+The few values you might need to change are centralized in
+[`Scripts/scanner.config`](Scripts/scanner.config) and are read automatically
+by `setup.sh` and `verify_scanner.py`:
+
+- `DWT_SERVICE_URL` — where the Dynamic Web TWAIN Service listens (default `http://127.0.0.1:18622`).
+- `DWT_SERVICE_PKG_URL` — where `setup.sh` downloads the service installer from.
+- `INSTALL_DWT_SERVICE` — `auto` (install only if missing), `always`, or `never`.
+- `DWT_LICENSE_KEY` — your Dynamsoft license for **local** CLI scanning. The
+  bundled default is a public trial key that has **expired**, so local
+  `createJob` returns HTTP 403. The browser demo still works (Dynamsoft
+  injects a fresh server-side license). For local scanning, put your own key
+  here from https://www.dynamsoft.com/customer/license/trialLicense/?product=dcv&package=cross-platform
+
+Every key is optional; if a key is missing the scripts fall back to built-in
+defaults.
 
 ## Build and Install for Distribution
 The Xcode project is configured for ad-hoc code signing (`Sign to Run Locally`) and
 automatic provisioning, so it builds out of the box without an Apple Developer
-account or a specific team ID. Two scripts under [Scripts](Scripts) turn the
+account or a specific team ID. Three scripts under [Scripts](Scripts) turn the
 project into a ready-to-use ICA device module:
+
+> [`setup.sh`](Scripts/setup.sh) is the all-in-one path above (app + Bonjour +
+> Dynamic Web TWAIN Service + Python). The two options below are the underlying
+> building blocks it uses.
 
 ### Option 1: Install for the current user (no admin rights required)
 ```bash
@@ -46,6 +86,57 @@ sudo installer -pkg dist/VirtualScanner-1.0.pkg -target /
 > distribute the `.pkg` outside your own machine, sign and notarize it with
 > your own Apple Developer ID (`CODE_SIGN_IDENTITY` / `DEVELOPMENT_TEAM` build
 > settings) so Gatekeeper allows it to run without warnings.
+
+## Bonjour Advertisement (why it's needed)
+
+macOS does **not** discover this device from the mere presence of
+`VirtualScanner.app` on disk — `icdd` finds it via **Bonjour**
+(`_scanner._tcp`). While a
+`dns-sd -R "Virtual Scanner" _scanner._tcp local 9500 mdl="Virtual Scanner" mfg=Apple`
+advertisement is running, `icdd`'s Bonjour discovery sees the device and
+launches the module on demand.
+
+If you ever started that `dns-sd` command manually in a terminal, the scanner
+only worked until you closed the terminal or **restarted the Mac** — after a
+reboot the advertisement is gone and the scanner silently disappears, no matter
+how many times you reinstall the app.
+
+To fix this permanently, `build_and_install.sh` installs a **LaunchAgent**
+(`Scripts/com.dynamsoft.virtualscanner.bonjour.plist`) into
+`~/Library/LaunchAgents` and starts it automatically. It runs in your login
+session, is loaded at login (`RunAtLoad`) and is restarted if it dies
+(`KeepAlive`), so the scanner re-appears on its own after every reboot.
+
+The TXT record keys (`mdl=Virtual Scanner`, `mfg=Apple`) match the
+`BonjourNetwork` matcher in `Resources/DeviceMatchingInfo.plist`.
+
+### Managing the advertisement by hand
+
+`Scripts/bonjour.sh` wraps the LaunchAgent so you don't need to remember
+`launchctl` syntax:
+
+```bash
+./Scripts/bonjour.sh install    # copy the plist to ~/Library/LaunchAgents and start
+./Scripts/bonjour.sh start      # load the agent (idempotent)
+./Scripts/bonjour.sh stop       # unload the agent
+./Scripts/bonjour.sh restart    # stop then start
+./Scripts/bonjour.sh status     # is it loaded / running / browsable?
+```
+
+`build_and_install.sh` calls `bonjour.sh install` for you, so this is only
+needed if you want to pause or inspect the advertisement.
+
+### If the scanner is missing after a reboot
+
+1. Check the service: `./Scripts/bonjour.sh status`
+   — `dns-sd process: yes` and a `Virtual Scanner` browse hit mean the
+   advertisement is fine.
+2. Start it if it stopped: `./Scripts/bonjour.sh start`
+3. Confirm the device is discoverable (Dynamic Web TWAIN Service must be
+   running): `curl -s http://127.0.0.1:18622/DWTAPI/Scanners` — you should see
+   `"Virtual Scanner EX/AF"` in the list.
+4. Open **Image Capture** — `Virtual Scanner EX/AF` should appear under
+   Devices.
 
 ## Verify with Python
 [`Scripts/verify_scanner.py`](Scripts/verify_scanner.py) verifies that

@@ -77,6 +77,16 @@ if [[ "$SCOPE" == "user" && -d "$SYSTEM_COPY" ]]; then
     || echo "warning: failed to update the system-scope copy; run: sudo ./Scripts/build_and_install.sh --system"
 fi
 
+# ---------------------------------------------------------------------------
+# Install the Bonjour advertisement LaunchAgent so icdd can discover the
+# device. Without it, the scanner only works while a manually started
+# `dns-sd -R ...` is running -- which dies on reboot (the classic "works now,
+# gone after restart" trap). Delegated to Scripts/bonjour.sh so the agent can
+# also be managed by hand afterwards (start/stop/restart/status).
+# ---------------------------------------------------------------------------
+echo "==> Starting Bonjour advertisement service (LaunchAgent)"
+"$SCRIPT_DIR/bonjour.sh" install
+
 echo "==> Restarting Image Capture services so the new device is discovered"
 killall VirtualScanner >/dev/null 2>&1 || true
 killall icdd >/dev/null 2>&1 || true
