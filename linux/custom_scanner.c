@@ -1198,6 +1198,8 @@ SANE_Status sane_custom_scanner_read (SANE_Handle handle, SANE_Byte *data, SANE_
   long     got;
   long     written    = 0;
   long     last_byte  = -1;
+  long     processed;
+  int      truncated  = 0;
   long     i;
   unsigned char *buffer;
 
@@ -1304,12 +1306,25 @@ SANE_Status sane_custom_scanner_read (SANE_Handle handle, SANE_Byte *data, SANE_
 
     case OUT_BINARY:
     {
-      /* 1 bit per pixel, MSB first, lines padded to whole bytes. */
-      long pixel    = s->page_pixel + i;
-      long line     = pixel / s->info.width;
-      long column   = pixel % s->info.width;
-      long byte_pos = line * bpl + column / 8;
-      int  bit      = 7 - (int) (column % 8);
+      /* 1 bit per pixel, MSB first, lines padded to whole bytes. The bit
+         position is computed relative to the start of THIS read call:
+         data is the caller's buffer for this call, not the whole page. */
+      long pixel      = s->page_pixel + i;
+      long line       = pixel / s->info.width;
+      long column     = pixel % s->info.width;
+      long call_base  = (s->page_pixel / s->info.width) * (long) bpl * 8
+                      + (s->page_pixel % s->info.width);
+      long rel_bit    = line * (long) bpl * 8 + column - call_base;
+      long byte_pos   = rel_bit / 8;
+      int  bit        = 7 - (int) (rel_bit % 8);
+
+      if (byte_pos >= max_length)
+      {
+        /* The caller's buffer is full: stop converting here and rewind the
+           pixels that were not handed out. */
+        truncated = 1;
+        break;
+      }
 
       if (byte_pos != last_byte)
       {
@@ -1324,10 +1339,27 @@ SANE_Status sane_custom_scanner_read (SANE_Handle handle, SANE_Byte *data, SANE_
       break;
     }
     }
+
+    if (truncated)
+    {
+      processed = i;
+      break;
+    }
   }
   free (buffer);
 
-  s->page_pixel += want_pixels;
+  processed = truncated ? processed : want_pixels;
+  if (truncated && processed < want_pixels)
+  {
+    /* Rewind the source pixels that were converted but not handed out. */
+    long unread = (want_pixels - processed) * src_pixel_bytes;
+
+    if (fseek (s->fp, -unread, SEEK_CUR) == 0)
+      s->info.data_read -= unread;
+    /* if the seek fails (should not happen for regular files) the pixels
+       are dropped rather than risk an endless loop */
+  }
+  s->page_pixel += processed;
   *length = (SANE_Int) written;
   return *length > 0 ? SANE_STATUS_GOOD : SANE_STATUS_EOF;
 }

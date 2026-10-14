@@ -142,6 +142,46 @@ static void write_image_set (const char *dir)
   }
 }
 
+/* Writes a P6 (rgb) or P5 (gray) image of an arbitrary size whose samples
+   are "id + channel", like write_image, but with explicit dimensions. */
+static int write_sized_image (const char *path, int magic6, int id, int maxval, int width, int height)
+{
+  FILE *fp = fopen (path, "wb");
+  int   channels = magic6 ? 3 : 1;
+  int   x, y, c;
+
+  if (!fp)
+  {
+    perror (path);
+    return 0;
+  }
+
+  fprintf (fp, "P%c\n%d %d\n%d\n", magic6 ? '6' : '5', width, height, maxval);
+
+  for (y = 0; y < height; y++)
+  {
+    for (x = 0; x < width; x++)
+    {
+      for (c = 0; c < channels; c++)
+      {
+        unsigned int value = (unsigned int) (id + c);
+
+        if (maxval > 255)
+        {
+          value *= 257;
+          fputc ((int) ((value >> 8) & 0xff), fp);
+          fputc ((int) (value & 0xff), fp);
+        }
+        else
+          fputc ((int) value, fp);
+      }
+    }
+  }
+
+  fclose (fp);
+  return 1;
+}
+
 static void reinit (void)
 {
   SANE_Int version = 0;
@@ -789,6 +829,88 @@ static void test_errors (void)
   set_env ("CUSTOM_SCANNER_IMAGE", NULL);
 }
 
+/* Regression for the 1-bit (Binary/Lineart) read path: the page is much
+   larger than the read buffer, so sane_read is called many times. The bit
+   positions must be relative to each call's buffer and never exceed it. */
+static void test_binary_multiread (void)
+{
+  char        dir[512];
+  char        path[600];
+  SANE_Handle handle = NULL;
+  SANE_Parameters params;
+  unsigned char page[64];
+  long        total = 0;
+  int         info  = 0;
+  int         line, i;
+
+  printf ("binary multi read: 33x5 page, 7-byte reads, packed lines stay intact\n");
+
+  join (dir, sizeof dir, g_root, "binary-big");
+  make_dir (dir);
+  join (path, sizeof path, dir, "1-big.pnm");
+  /* id 200: pixels (200, 201, 202), luminance 200 -> every bit is 1. */
+  if (!write_sized_image (path, 1, 200, 255, 33, 5))
+  {
+    printf ("cannot create %s\n", path);
+    exit (2);
+  }
+
+  set_env ("CUSTOM_SCANNER_IMAGE_DIR", dir);
+  set_env ("CUSTOM_SCANNER_MODE", "single");
+  set_env ("CUSTOM_SCANNER_CHANNEL_ORDER", "rgb");
+  set_env ("CUSTOM_SCANNER_INDEX", NULL);
+  reset_state ("state-binary");
+  reinit ();
+
+  CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
+  CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Binary", &info) ==
+             SANE_STATUS_GOOD,
+         "cannot select Binary");
+
+  CHECK (sane_custom_scanner_start (handle) == SANE_STATUS_GOOD, "binary multi read: sane_start failed");
+  memset (&params, 0, sizeof params);
+  CHECK (sane_custom_scanner_get_parameters (handle, &params) == SANE_STATUS_GOOD, "get_parameters failed");
+  CHECK (params.format == SANE_FRAME_GRAY, "binary page is not gray-framed");
+  CHECK (params.depth == 1, "binary page has depth %d", params.depth);
+  CHECK (params.lines == 5, "binary page has %d lines", params.lines);
+  CHECK (params.bytes_per_line == (33 + 7) / 8, "binary page has bytes_per_line %d", params.bytes_per_line);
+
+  for (;;)
+  {
+    SANE_Byte    buffer[7];
+    SANE_Int     length = -1;
+    SANE_Status  status = sane_custom_scanner_read (handle, buffer, (SANE_Int) sizeof buffer, &length);
+
+    if (status == SANE_STATUS_EOF)
+      break;
+    if (status != SANE_STATUS_GOOD)
+    {
+      CHECK (0, "binary multi read: sane_read failed");
+      break;
+    }
+    CHECK (length >= 1 && length <= (SANE_Int) sizeof buffer,
+           "binary multi read: length %d exceeds the %d-byte buffer", length, (int) sizeof buffer);
+    if (total + length <= (long) sizeof page)
+      memcpy (page + total, buffer, (size_t) length);
+    total += length;
+    CHECK (total <= (long) sizeof page, "binary multi read: %ld bytes exceed the page size", total);
+  }
+
+  CHECK (total == (long) ((33 + 7) / 8) * 5, "binary multi read: %ld bytes, expected %d", total,
+         (33 + 7) / 8 * 5);
+  /* Every line packs 33 set bits (MSB first): 0xff 0xff 0xff 0xff 0x80 -
+     the 33rd bit is the top bit of the fifth byte. */
+  for (line = 0; line < 5; line++)
+  {
+    for (i = 0; i < 4; i++)
+      CHECK (page[line * 5 + i] == 0xff, "line %d byte %d is 0x%02x, expected 0xff", line, i,
+             page[line * 5 + i]);
+    CHECK (page[line * 5 + 4] == 0x80, "line %d byte 4 is 0x%02x, expected 0x80", line, page[line * 5 + 4]);
+  }
+
+  sane_custom_scanner_close (handle);
+}
+
 /* ------------------------------------------------------------------------- */
 
 int main (void)
@@ -820,6 +942,7 @@ int main (void)
   test_formats ();
   test_channel_order ();
   test_modes ();
+  test_binary_multiread ();
   test_errors ();
 
   snprintf (command, sizeof command, "rm -rf '%s'", g_root);
