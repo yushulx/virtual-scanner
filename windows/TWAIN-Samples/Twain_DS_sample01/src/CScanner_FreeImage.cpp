@@ -40,6 +40,7 @@
 
 #include "CScanner_FreeImage.h"
 
+#include <algorithm>
 #include <iostream>
 #include <time.h>
 #include <stdio.h>
@@ -108,7 +109,9 @@ CScanner_FreeImage::CScanner_FreeImage() :
   m_nRowOffset(0),
   m_nDocCount(0),
   m_nSourceWidth(0),
-  m_nSourceHeight(0)
+  m_nSourceHeight(0),
+  m_nStartIndex(0),
+  m_nJobPageIndex(0)
 {
   memset(m_szSourceImagePath, 0, PATH_MAX);
 
@@ -209,9 +212,155 @@ bool CScanner_FreeImage::resetScanner()
   return bret;
 }
 
+namespace
+{
+    // Lower cases a string, used for the file extension check.
+    std::string toLower(const std::string& value)
+    {
+        std::string result = value;
+
+        for (size_t i = 0; i < result.size(); ++i)
+        {
+            result[i] = (char)::tolower((unsigned char)result[i]);
+        }
+
+        return result;
+    }
+
+    // True for .png/.jpg files (directories never match).
+    bool isImageFile(const std::string& name, DWORD attributes)
+    {
+        if (0 != (attributes & FILE_ATTRIBUTE_DIRECTORY))
+            return false;
+
+        std::string lower = toLower(name);
+
+        return lower.size() > 4
+            && (0 == lower.compare(lower.size() - 4, 4, ".png")
+             || 0 == lower.compare(lower.size() - 4, 4, ".jpg"));
+    }
+
+    bool directoryExists(const std::string& path)
+    {
+        DWORD attributes = GetFileAttributesA(path.c_str());
+
+        return INVALID_FILE_ATTRIBUTES != attributes && 0 != (attributes & FILE_ATTRIBUTE_DIRECTORY);
+    }
+
+    // "2.png" has to sort before "10.png", so the digits are compared as numbers.
+    bool naturalCompare(const std::string& left, const std::string& right)
+    {
+        size_t i = 0;
+        size_t j = 0;
+
+        while (i < left.size() && j < right.size())
+        {
+            if (isdigit((unsigned char)left[i]) && isdigit((unsigned char)right[j]))
+            {
+                size_t iEnd = i;
+                size_t jEnd = j;
+
+                while (iEnd < left.size() && isdigit((unsigned char)left[iEnd])) ++iEnd;
+                while (jEnd < right.size() && isdigit((unsigned char)right[jEnd])) ++jEnd;
+
+                std::string leftNumber  = left.substr(i, iEnd - i);
+                std::string rightNumber = right.substr(j, jEnd - j);
+
+                // strip leading zeros so that the lengths can be compared
+                size_t leftStart  = leftNumber.find_first_not_of('0');
+                size_t rightStart = rightNumber.find_first_not_of('0');
+                leftNumber  = (std::string::npos == leftStart)  ? "" : leftNumber.substr(leftStart);
+                rightNumber = (std::string::npos == rightStart) ? "" : rightNumber.substr(rightStart);
+
+                if (leftNumber.size() != rightNumber.size())
+                    return leftNumber.size() < rightNumber.size();
+
+                if (leftNumber != rightNumber)
+                    return leftNumber < rightNumber;
+
+                i = iEnd;
+                j = jEnd;
+                continue;
+            }
+
+            char lc = (char)::tolower((unsigned char)left[i]);
+            char rc = (char)::tolower((unsigned char)right[j]);
+
+            if (lc != rc)
+                return lc < rc;
+
+            ++i;
+            ++j;
+        }
+
+        return left.size() < right.size();
+    }
+
+    // Reads a JSON file; returns a null json when the file is missing or broken.
+    json readJsonFile(const std::string& path)
+    {
+        json value;
+
+        try
+        {
+            ifstream stream(path.c_str());
+
+            if (stream.is_open())
+                stream >> value;
+        }
+        catch (...)
+        {
+            value = json();
+        }
+
+        return value;
+    }
+
+    // Where the position inside the image set is remembered when the image
+    // folder itself is not writable (the shipped sample set lives in
+    // C:\Windows, which a normal user cannot write to):
+    //    %LOCALAPPDATA%\VirtualScanner\info.json
+    std::string userStateFile()
+    {
+        char  buffer[PATH_MAX] = {0};
+        DWORD length = GetEnvironmentVariableA("LOCALAPPDATA", buffer, sizeof(buffer));
+
+        std::string folder = (length > 0 && length < sizeof(buffer)) ? std::string(buffer) : std::string(".");
+        folder += "\\VirtualScanner";
+        CreateDirectoryA(folder.c_str(), NULL);
+
+        return folder + "\\info.json";
+    }
+}
+
+//-------------------------------------------------------------------------------- initCustomDataSet
+// Picks the image that is handed out for the next page.
+//
+// The image set is the folder configured through source.json (kept for
+// backward compatibility) or, when there is none, the "images" folder of the
+// installation directory:
+//
+//   C:\Windows\twain_64\sample2\images
+//
+// So a fresh installation scans the bundled sample images without any
+// configuration. The images are sorted in natural order (2.png before
+// 10.png) and one scan job walks through them: a flatbed scan returns one
+// image, a document feeder (ADF) scan returns one page per image.
+//
+// <image folder>\info.json, if it exists, controls the position and the
+// number of pages of an ADF job:
+//
+//   {"index": 0, "maxcount": 11}
+//
+// Folders without info.json (like the read-only sample folder) start at the
+// first image, use every image for ADF, and remember the position per user in
+// %LOCALAPPDATA%\VirtualScanner\info.json.
 void CScanner_FreeImage::initCustomDataSet()
 {
-    // Read custom image set
+    images.clear();
+    m_nJobPageIndex = 0;
+
+    // The folder this data source was loaded from.
     char szTWAIN_DS_DIR[PATH_MAX];
     GetModuleFileName(g_hinstance, szTWAIN_DS_DIR, PATH_MAX);
     // strip filename from path
@@ -225,83 +374,112 @@ void CScanner_FreeImage::initCustomDataSet()
         }
         --x;
     }
+
+    // 1. the image folder: source.json wins, otherwise <data source>\images
+    std::string imageFolder;
+
     char sourceConfig[PATH_MAX];
     SSNPRINTF(sourceConfig, sizeof(sourceConfig), PATH_MAX, "%s%csource.json", szTWAIN_DS_DIR, PATH_SEPERATOR);
 
     if (FILE_EXISTS(sourceConfig))
     {
-        // Read the image folder from source.json
-        ifstream stream(sourceConfig);
-        json  source;
-        stream >> source;
+        json source = readJsonFile(sourceConfig);
+
+        if (source.is_object() && source["folder"].is_string())
+            imageFolder = source["folder"].get<std::string>();
+    }
+
+    if (!directoryExists(imageFolder))
+    {
+        char defaultFolder[PATH_MAX];
+        SSNPRINTF(defaultFolder, sizeof(defaultFolder), PATH_MAX, "%s%cimages", szTWAIN_DS_DIR, PATH_SEPERATOR);
+
+        if (directoryExists(defaultFolder))
+            imageFolder = defaultFolder;
+    }
+
+    if (!directoryExists(imageFolder))
+    {
+        // No image set at all: keep the single image that ships with the data
+        // source (TWAIN_logo.png).
+        if (ms_blShowConsoleMessages)
+            cout << "ds: no image folder found, using " << m_szSourceImagePath << endl;
+        return;
+    }
+
+    // 2. collect the images of that folder
+    // https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea
+    WIN32_FIND_DATAA data;
+    HANDLE handle = FindFirstFileA((imageFolder + "\\*").c_str(), &data);
+
+    if (INVALID_HANDLE_VALUE == handle)
+    {
+        cerr << "ds: cannot read the image folder " << imageFolder << endl;
+        return;
+    }
+
+    do
+    {
+        if (isImageFile(data.cFileName, data.dwFileAttributes))
+            images.push_back(imageFolder + PATH_SEPERATOR + data.cFileName);
+    }
+    while (0 != FindNextFileA(handle, &data));
+
+    FindClose(handle);
+
+    if (0 == images.size())
+    {
+        cerr << "ds: no .png/.jpg image in " << imageFolder << endl;
+        return;
+    }
+
+    std::sort(images.begin(), images.end(), naturalCompare);
+
+    // 3. where to continue: <image folder>\info.json, or a per user file when
+    //    the folder cannot be written to
+    const std::string folderState = imageFolder + PATH_SEPERATOR + "info.json";
+    std::string       statePath   = folderState;
+
+    if (!FILE_EXISTS(statePath.c_str()))
+        statePath = userStateFile();
+
+    json state = readJsonFile(statePath);
+
+    if (!state.is_object())
+        state = json::object();
+
+    int index    = state["index"].is_number_integer() ? state["index"].get<int>() : 0;
+    int maxCount = state["maxcount"].is_number_integer() ? state["maxcount"].get<int>() : (int)images.size();
+
+    if (index < 0)
+        index = 0;
+    index %= (int)images.size();
+
+    if (maxCount < 1 || maxCount > (int)images.size())
+        maxCount = (int)images.size();
+
+    m_nStartIndex = index;
+    m_nDocCount = m_nMaxDocCount = (short)maxCount;
+
+    // 4. the first page of this scan job
+    memset(m_szSourceImagePath, 0, PATH_MAX);
+    SSNPRINTF(m_szSourceImagePath, sizeof(m_szSourceImagePath), PATH_MAX, images[index].c_str());
+
+    if (ms_blShowConsoleMessages)
+    {
+        cout << "ds: " << images.size() << " image(s) in " << imageFolder
+             << ", starting at " << images[index] << ", " << maxCount << " page(s) per ADF job" << endl;
+    }
+
+    // 5. the next scan job continues at the following image
+    state["index"]    = (index + 1) % (int)images.size();
+    state["maxcount"] = maxCount;
+
+    std::ofstream stream(statePath.c_str());
+    if (stream.is_open())
+    {
+        stream << state << std::endl;
         stream.close();
-
-        string imageFolder = source["folder"];
-
-        if (FILE_EXISTS(imageFolder.c_str()))
-        {
-            // Get the image index and max image count for ADF
-            string infoPath = imageFolder + PATH_SEPERATOR + "info.json";
-            ifstream infoStream(infoPath);
-            json info;
-            infoStream >> info;
-            infoStream.close();
-
-            int index = info["index"];
-            m_nDocCount = m_nMaxDocCount = info["maxcount"];
-
-            // https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea
-            WIN32_FIND_DATAA data;
-            HANDLE handle = FindFirstFileA((imageFolder + "\\*").c_str(), &data);
-
-            if (handle == INVALID_HANDLE_VALUE)
-                throw std::runtime_error("Invalid handle value! Please check your path...");
-
-            while (FindNextFileA(handle, &data) != 0)
-            {
-                string filename = std::string(data.cFileName);
-                string path = imageFolder + PATH_SEPERATOR + filename;
-                string suffix = path.substr(path.length() - 4, 4);
-                if (!suffix.compare(".jpg") || !suffix.compare(".png"))
-                {
-                    images.push_back(path);
-                }
-            }
-
-            FindClose(handle);
-
-
-            //for (const auto& entry : fs::directory_iterator(imageFolder))
-            //{
-            //    std::string path{ entry.path().u8string() };
-            //    string suffix = path.substr(path.length() - 4, 4);
-            //    // Get JPEG or PNG files
-            //    if (!suffix.compare(".jpg") || !suffix.compare(".png"))
-            //    {
-            //        images.push_back(path);
-            //    }
-            //}
-
-            if (images.size() > 0)
-            {
-                if (index >= images.size()) index = 0;
-                if (images.size() < m_nDocCount)
-                {
-                    m_nDocCount = m_nMaxDocCount = images.size();
-                }
-
-                // Set a custom image
-                memset(m_szSourceImagePath, 0, PATH_MAX);
-                SSNPRINTF(m_szSourceImagePath, sizeof(m_szSourceImagePath), PATH_MAX, images[index].c_str());
-
-                // Save image index to info.json
-                index += 1;
-                info["index"] = index;
-                std::ofstream stream(infoPath);
-                stream << info << std::endl;
-                stream.close();
-            }
-        }
     }
 }
 
@@ -348,12 +526,16 @@ bool CScanner_FreeImage::acquireImage()
     m_pDIB = 0;
   }
 
-  // get the image if it exists
-  if (images.size() > 0 && m_nPaperSource == SFI_PAPERSOURCE_ADF)
+  // Every page of a scan job uses the next image of the folder: a flatbed job
+  // has a single page, a document feeder (ADF) job one page per image (see
+  // initCustomDataSet()).
+  if (images.size() > 0)
   {
-      // Set a custom image
+      size_t index = ((size_t)m_nStartIndex + (size_t)m_nJobPageIndex) % images.size();
+
       memset(m_szSourceImagePath, 0, PATH_MAX);
-      SSNPRINTF(m_szSourceImagePath, sizeof(m_szSourceImagePath), PATH_MAX, images[m_nDocCount - 1].c_str());
+      SSNPRINTF(m_szSourceImagePath, sizeof(m_szSourceImagePath), PATH_MAX, images[index].c_str());
+      m_nJobPageIndex++;
   }
 
   if(FALSE == FILE_EXISTS(m_szSourceImagePath))

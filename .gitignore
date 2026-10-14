@@ -1,2 +1,29 @@
 .DS_Store
-macos/Scripts/__pycache__/verify_scanner.cpython-313.pyc
+macos/Scripts/__pycache__/*.pyc
+
+# --- Linux ------------------------------------------------------------------
+linux/libsane-custom_scanner.so.1
+linux/build/
+linux/dist/
+linux/samples/
+
+# --- macOS ------------------------------------------------------------------
+macos/build/
+macos/dist/
+.venv/
+__pycache__/
+
+# --- Windows ----------------------------------------------------------------
+windows/dist/
+windows/TWAIN-Samples/Twain_DS_sample01/visual_studio/Debug/
+windows/TWAIN-Samples/Twain_DS_sample01/visual_studio/Release/
+windows/TWAIN-Samples/Twain_DS_sample01/visual_studio/*.user
+windows/TWAIN-Samples/Twain_DS_sample01/pub/bin/
+windows/TWAIN-Samples/Twain_DS_sample01/*.vc.db
+windows/TWAIN-Samples/Twain_DS_sample01/src/GeneratedFiles/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.log

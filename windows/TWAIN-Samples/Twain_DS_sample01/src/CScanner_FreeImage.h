@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright © 2007 TWAIN Working Group:  
+* Copyright ï¿½ 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -238,6 +238,8 @@ protected:
   WORD              m_nSourceWidth;           /**< Width of image in FreeImage */
   WORD              m_nSourceHeight;          /**< Height of image in FreeImage */
   char              m_szSourceImagePath[PATH_MAX];  /**< image used with FreeImage */
+  int               m_nStartIndex;            /**< image of the first page of this scan job */
+  int               m_nJobPageIndex;          /**< 0 based page number inside this scan job */
 
   std::vector<std::string> images;
 };

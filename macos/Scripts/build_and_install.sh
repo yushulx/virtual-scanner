@@ -34,6 +34,15 @@ else
 fi
 
 echo "==> Building $SCHEME ($CONFIGURATION)"
+
+# ARCHS_OVERRIDE="x86_64 arm64" builds a universal binary that runs on both
+# Intel Macs and Apple silicon.
+extra_build_args=()
+if [[ -n "${ARCHS_OVERRIDE:-}" ]]; then
+  extra_build_args+=("ARCHS=$ARCHS_OVERRIDE" "ONLY_ACTIVE_ARCH=NO")
+  echo "==> Architectures: $ARCHS_OVERRIDE"
+fi
+
 xcodebuild \
   -project "$PROJECT_DIR/VirtualScanner.xcodeproj" \
   -scheme "$SCHEME" \
@@ -42,6 +51,7 @@ xcodebuild \
   CODE_SIGN_IDENTITY="-" \
   CODE_SIGNING_REQUIRED=YES \
   CODE_SIGNING_ALLOWED=YES \
+  "${extra_build_args[@]}" \
   build
 
 BUILT_APP="$BUILD_DIR/Build/Products/$CONFIGURATION/$APP_NAME"

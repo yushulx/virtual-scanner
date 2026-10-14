@@ -1,0 +1,284 @@
+name: Build installers
+
+# Builds the release packages of all three virtual scanners and (for tags, or
+# when "create_release" is checked) publishes them in a GitHub release:
+#
+#   Windows   VirtualScannerSetup-<version>.exe            Inno Setup installer
+#             VirtualScanner-<version>-win64-portable.zip  unpack-and-use ZIP
+#   Linux     sane-custom-scanner_<version>_amd64.deb      Debian/Ubuntu package
+#   macOS     VirtualScanner-<version>.pkg                 installer package
+#
+# Every package ships the 11 sample images, so the virtual scanner cycles
+# through them right after the installation.
+#
+#   * push a tag:      git tag v1.0.0 && git push origin v1.0.0
+#   * or run it by hand: Actions -> Build installers -> Run workflow
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version stamped into the packages (e.g. 1.0.0)'
+        required: true
+        default: '1.0.0'
+      create_release:
+        description: 'Publish the packages as a GitHub release'
+        type: boolean
+        default: false
+      qt_version:
+        description: 'Qt version for the Windows build'
+        required: true
+        default: '5.12.11'
+      win32:
+        description: 'Also build the 32 bit Windows data source'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Version / release decision
+  # ---------------------------------------------------------------------------
+  resolve:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - name: Determine version and release
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            tag="${GITHUB_REF_NAME}"
+            release="true"
+          else
+            version="${{ inputs.version }}"
+            tag="v${version}"
+            release="${{ inputs.create_release }}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}"         >> "$GITHUB_OUTPUT"
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${version} (tag ${tag}, release ${release})"
+
+  # ---------------------------------------------------------------------------
+  # Windows: TWAIN data source -> Inno Setup installer + portable ZIP
+  # ---------------------------------------------------------------------------
+  windows:
+    name: Windows installer
+    runs-on: windows-2022
+    needs: resolve
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt ${{ inputs.qt_version || '5.12.11' }}
+        id: qt
+        continue-on-error: true
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ inputs.qt_version || '5.12.11' }}
+          arch: ${{ inputs.win32 && 'win64_msvc2017_64,win32_msvc2017' || 'win64_msvc2017_64' }}
+          dir: ${{ github.workspace }}/qt
+          cache: true
+
+      - name: Install Qt (fallback 5.15.2)
+        if: steps.qt.outcome == 'failure'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          arch: ${{ inputs.win32 && 'win64_msvc2019_64,win32_msvc2019' || 'win64_msvc2019_64' }}
+          dir: ${{ github.workspace }}/qt
+          cache: true
+
+      - name: Show the Qt installation
+        shell: pwsh
+        run: |
+          $qtRoot = if ($env:QT_ROOT_DIR) { $env:QT_ROOT_DIR } else { $env:QTDIR }
+          Write-Host "Qt root: $qtRoot"
+
+          $windeployqt = Get-ChildItem -Path $qtRoot -Filter 'windeployqt.exe' -Recurse -ErrorAction SilentlyContinue |
+                         Select-Object -First 1
+          if (-not $windeployqt) { throw "windeployqt.exe was not found below $qtRoot" }
+          Write-Host "windeployqt: $($windeployqt.FullName)"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the data source and the packages
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          $qtRoot = if ($env:QT_ROOT_DIR) { $env:QT_ROOT_DIR } else { $env:QTDIR }
+          $platform = if ('${{ inputs.win32 }}' -eq 'true') { 'All' } else { 'x64' }
+
+          $arguments = @{
+            Version  = $env:VERSION
+            Platform = $platform
+          }
+          if ($qtRoot) { $arguments['QTDir'] = $qtRoot }
+
+          .\windows\scripts\build_installer.ps1 @arguments
+
+      - name: Show the packages
+        shell: pwsh
+        run: Get-ChildItem .\windows\dist -File | Select-Object Name, Length
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            windows/dist/*.exe
+            windows/dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Linux: SANE backend -> .deb
+  # ---------------------------------------------------------------------------
+  linux:
+    name: Linux package
+    runs-on: ubuntu-latest
+    needs: resolve
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libsane-dev sane-utils imagemagick dpkg-dev
+
+      - name: Self test the backend
+        run: make -C linux test
+
+      - name: Build the sample images and the .deb
+        run: make -C linux deb VERSION="${{ needs.resolve.outputs.version }}"
+
+      - name: Inspect the package
+        run: |
+          deb="$(ls linux/dist/*.deb)"
+          echo "package: $deb"
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb"
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: linux/dist/*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # macOS: Image Capture device module -> .pkg
+  # ---------------------------------------------------------------------------
+  macos:
+    name: macOS package
+    runs-on: macos-latest
+    needs: resolve
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the toolchain
+        run: xcodebuild -version && sw_vers
+
+      - name: Build the installer package (universal binary)
+        id: universal
+        continue-on-error: true
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          ARCHS_OVERRIDE: 'x86_64 arm64'
+        run: bash ./macos/Scripts/package.sh "$VERSION" --build
+
+      - name: Build the installer package (native architecture)
+        if: steps.universal.outcome == 'failure'
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          rm -rf macos/build macos/dist
+          bash ./macos/Scripts/package.sh "$VERSION" --build
+
+      - name: Verify the package
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          pkg="macos/dist/VirtualScanner-$VERSION.pkg"
+          ls -l "$pkg"
+          pkgutil --payload-files "$pkg" | head -50
+          pkgutil --check-signature "$pkg" || echo "(not signed - expected for ad-hoc builds)"
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: macos/dist/*.pkg
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Release
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish the release
+    runs-on: ubuntu-latest
+    needs: [resolve, windows, linux, macos]
+    if: needs.resolve.outputs.release == 'true'
+    steps:
+      - name: Download all the packages
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: List the packages
+        run: find packages -type f | sort
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: Virtual Scanner ${{ needs.resolve.outputs.version }}
+          files: packages/*
+          body: |
+            Virtual scanners for Windows, Linux and macOS - version ${{ needs.resolve.outputs.version }}.
+
+            Every package ships the 11 bundled sample images, so the virtual
+            scanner returns a different picture on every scan right after the
+            installation.
+
+            | Platform | File | Install |
+            | --- | --- | --- |
+            | Windows | `VirtualScannerSetup-${{ needs.resolve.outputs.version }}.exe` | Run it (asks for administrator rights) and scan with twacker / the [Dynamic Web TWAIN demo](https://demo.dynamsoft.com/web-twain/). |
+            | Windows | `VirtualScanner-${{ needs.resolve.outputs.version }}-win64-portable.zip` | Unpack into `C:\Windows\twain_64\sample2` and run `configure-samples.cmd`. |
+            | Linux | `sane-custom-scanner_${{ needs.resolve.outputs.version }}_amd64.deb` | `sudo apt install ./sane-custom-scanner_<version>_amd64.deb`, then `scanimage -L`. |
+            | macOS | `VirtualScanner-${{ needs.resolve.outputs.version }}.pkg` | `sudo installer -pkg VirtualScanner-<version>.pkg -target /`, then open Image Capture. |
+
+            Notes
+
+            * Windows: a TWAIN Data Source Manager (`twaindsm.dll` / `twain_32.dll`) must be
+              present - every scanner driver or Dynamic Web TWAIN installs one.
+            * macOS: the package is ad-hoc signed; sign and notarize it with your own
+              Developer ID before distributing it widely.
+            * Linux: the backend is installed together with its configuration, the sample
+              images and the `dll.d` drop-in that enables it; check the sample folder at
+              `/usr/share/custom_scanner/images`.
+            * All packages are built from the sources of this tag unless the workflow was
+              started manually without a compiler available.

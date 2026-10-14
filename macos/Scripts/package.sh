@@ -68,6 +68,15 @@ done
 # --- Optional rebuild ---------------------------------------------------------
 if [[ "$DO_BUILD" -eq 1 ]]; then
   echo "==> Building $SCHEME ($CONFIGURATION)"
+
+  # ARCHS_OVERRIDE="x86_64 arm64" builds a universal binary that runs on both
+  # Intel Macs and Apple silicon (used by the release workflow).
+  extra_build_args=()
+  if [[ -n "${ARCHS_OVERRIDE:-}" ]]; then
+    extra_build_args+=("ARCHS=$ARCHS_OVERRIDE" "ONLY_ACTIVE_ARCH=NO")
+    echo "==> Architectures: $ARCHS_OVERRIDE"
+  fi
+
   xcodebuild \
     -project "$PROJECT_DIR/VirtualScanner.xcodeproj" \
     -scheme "$SCHEME" \
@@ -76,6 +85,7 @@ if [[ "$DO_BUILD" -eq 1 ]]; then
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=YES \
     CODE_SIGNING_ALLOWED=YES \
+    "${extra_build_args[@]}" \
     build
 fi
 
