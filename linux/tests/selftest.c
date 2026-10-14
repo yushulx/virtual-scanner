@@ -17,6 +17,7 @@
  */
 
 #include <sane/sane.h>
+#include <sane/saneopts.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -411,7 +412,7 @@ static void test_source_option (void)
   {
     CHECK (sane_custom_scanner_control_option (handle, 0, SANE_ACTION_GET_VALUE, &value, &info) == SANE_STATUS_GOOD,
            "cannot read the number of options");
-    CHECK (value == 2, "expected 2 options, got %d", value);
+    CHECK (value == 3, "expected 3 options (num_options, source, mode), got %d", value);
   }
 
   descriptor = sane_custom_scanner_get_option_descriptor (handle, 1);
@@ -504,6 +505,7 @@ static void test_formats (void)
   SANE_Handle handle = NULL;
   Job         job;
   int         expected[1];
+  int         i;
 
   printf ("formats: gray (P5), 16 bit (maxval 65535) and images with header comments\n");
 
@@ -524,16 +526,19 @@ static void test_formats (void)
 
   CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
 
-  /* 1-gray.pnm: gray, 8 bit, 4x2 bytes. */
+  /* 1-gray.pnm: a gray source scanned in the default Color mode is
+     expanded to rgb (every sample of image id 7 is 7). */
   scan_job (handle, &job, MAX_PAGES);
   expected[0] = 7;
   check_pages (&job, "gray image", 1, expected);
   if (!job.error && job.pages == 1)
   {
-    CHECK (job.format[0] == SANE_FRAME_GRAY, "the P5 image is not gray");
-    CHECK (job.depth[0] == 8, "the P5 image has depth %d", job.depth[0]);
-    CHECK (job.bytes_per_line[0] == IMG_W, "the P5 image has bytes_per_line %d", job.bytes_per_line[0]);
-    CHECK (job.bytes[0] == IMG_W * IMG_H, "the P5 image has %ld bytes, expected %d", job.bytes[0], IMG_W * IMG_H);
+    CHECK (job.format[0] == SANE_FRAME_RGB, "the gray image was not expanded to rgb");
+    CHECK (job.depth[0] == 8, "the gray image has depth %d", job.depth[0]);
+    CHECK (job.bytes_per_line[0] == IMG_W * 3, "the gray image has bytes_per_line %d", job.bytes_per_line[0]);
+    CHECK (job.bytes[0] == IMG_W * IMG_H * 3, "the gray image has %ld bytes", job.bytes[0]);
+    for (i = 0; i < (int) job.bytes[0]; i++)
+      CHECK (job.data[0][i] == 7, "gray image byte %d is %d, expected 7", i, job.data[0][i]);
   }
 
   /* 2-deep.pnm: 16 bit source, down sized to 8 bit per sample. */
@@ -542,28 +547,194 @@ static void test_formats (void)
   check_pages (&job, "16 bit image", 1, expected);
   check_rgb_content (&job, "16 bit image", 0, 5, 1);
 
+  /* Third job (cycle wraps to the gray image) in Gray mode: the gray
+     source passes through unchanged. */
+  {
+    int info = 0;
+
+    CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Gray", &info) ==
+               SANE_STATUS_GOOD,
+           "cannot select Gray in the formats test");
+    scan_job (handle, &job, MAX_PAGES);
+    check_pages (&job, "gray image, gray mode", 1, NULL);
+    if (!job.error && job.pages == 1)
+    {
+      CHECK (job.format[0] == SANE_FRAME_GRAY, "gray mode did not hand out a gray frame");
+      CHECK (job.bytes_per_line[0] == IMG_W, "gray mode bytes_per_line %d", job.bytes_per_line[0]);
+      CHECK (job.bytes[0] == IMG_W * IMG_H, "gray mode has %ld bytes", job.bytes[0]);
+      for (i = 0; i < (int) job.bytes[0]; i++)
+        CHECK (job.data[0][i] == 7, "gray mode byte %d is %d, expected 7", i, job.data[0][i]);
+    }
+  }
+
   sane_custom_scanner_close (handle);
 }
 
-static void test_legacy_channel_order (void)
+static void test_channel_order (void)
 {
   char        images[512];
   SANE_Handle handle = NULL;
   Job         job;
 
-  printf ("channel_order: gbr (legacy default) rotates the channels\n");
+  printf ("channel_order: rgb is the default, gbr (legacy) rotates the channels\n");
 
   join (images, sizeof images, g_root, "images");
   set_env ("CUSTOM_SCANNER_IMAGE_DIR", images);
-  set_env ("CUSTOM_SCANNER_CHANNEL_ORDER", NULL); /* default: gbr */
+  set_env ("CUSTOM_SCANNER_CHANNEL_ORDER", NULL); /* default: rgb */
   set_env ("CUSTOM_SCANNER_MODE", "cycle");
   set_env ("CUSTOM_SCANNER_INDEX", "0");
   reinit ();
 
   CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
   scan_job (handle, &job, MAX_PAGES);
+  check_pages (&job, "default job", 1, NULL);
+  check_rgb_content (&job, "default job", 0, 0, 1);
+  sane_custom_scanner_close (handle);
+
+  set_env ("CUSTOM_SCANNER_CHANNEL_ORDER", "gbr");
+  reinit ();
+  CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
+  scan_job (handle, &job, MAX_PAGES);
   check_pages (&job, "legacy job", 1, NULL); /* the first byte is the green channel */
   check_rgb_content (&job, "legacy job", 0, 0, 0);
+
+  sane_custom_scanner_close (handle);
+}
+
+static void test_modes (void)
+{
+  char             images[512];
+  SANE_Handle      handle = NULL;
+  Job              job;
+  const SANE_Option_Descriptor *descriptor;
+  int              info = 0;
+  int              i;
+
+  printf ("mode option: Color, Gray, Binary/Lineart convert the scanned page\n");
+
+  join (images, sizeof images, g_root, "images");
+  set_env ("CUSTOM_SCANNER_IMAGE_DIR", images);
+  set_env ("CUSTOM_SCANNER_CHANNEL_ORDER", NULL);
+  set_env ("CUSTOM_SCANNER_MODE", "single");
+  set_env ("CUSTOM_SCANNER_INDEX", "3"); /* image id 3: pixels (3, 4, 5) */
+  reinit ();
+
+  CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
+
+  descriptor = sane_custom_scanner_get_option_descriptor (handle, 2);
+  CHECK (descriptor != NULL, "the mode option is missing");
+  if (descriptor)
+  {
+    CHECK (strcmp (descriptor->name, SANE_NAME_SCAN_MODE) == 0, "option 2 is not '%s'", SANE_NAME_SCAN_MODE);
+    CHECK (descriptor->type == SANE_TYPE_STRING, "the mode option is not a string");
+    CHECK (descriptor->constraint_type == SANE_CONSTRAINT_STRING_LIST, "the mode option has no string list");
+  }
+
+  /* Default mode is Color. */
+  scan_job (handle, &job, MAX_PAGES);
+  check_pages (&job, "color job", 1, NULL);
+  check_rgb_content (&job, "color job", 0, 3, 1);
+
+  /* Gray: BT.601 luminance of (3, 4, 5) = (3*299 + 4*587 + 5*114) / 1000 = 3. */
+  CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Gray", &info) ==
+             SANE_STATUS_GOOD,
+         "cannot select Gray");
+  scan_job (handle, &job, MAX_PAGES);
+  check_pages (&job, "gray job", 1, NULL);
+  if (!job.error && job.pages == 1)
+  {
+    CHECK (job.format[0] == SANE_FRAME_GRAY, "the gray job is not gray");
+    CHECK (job.depth[0] == 8, "the gray job has depth %d", job.depth[0]);
+    CHECK (job.bytes_per_line[0] == IMG_W, "the gray job has bytes_per_line %d", job.bytes_per_line[0]);
+    CHECK (job.bytes[0] == IMG_W * IMG_H, "the gray job has %ld bytes", job.bytes[0]);
+    for (i = 0; i < (int) job.bytes[0]; i++)
+      CHECK (job.data[0][i] == 3, "gray job byte %d is %d, expected 3", i, job.data[0][i]);
+  }
+
+  /* Binary: every sample of image 3 is dark, so all bits are 0. */
+  CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Binary", &info) ==
+             SANE_STATUS_GOOD,
+         "cannot select Binary");
+  scan_job (handle, &job, MAX_PAGES);
+  check_pages (&job, "binary job", 1, NULL);
+  if (!job.error && job.pages == 1)
+  {
+    CHECK (job.format[0] == SANE_FRAME_GRAY, "the binary job is not gray-framed");
+    CHECK (job.depth[0] == 1, "the binary job has depth %d, expected 1", job.depth[0]);
+    CHECK (job.bytes_per_line[0] == (IMG_W + 7) / 8, "the binary job has bytes_per_line %d",
+           job.bytes_per_line[0]);
+    CHECK (job.bytes[0] == (size_t) ((IMG_W + 7) / 8) * IMG_H, "the binary job has %ld bytes", job.bytes[0]);
+    for (i = 0; i < (int) job.bytes[0]; i++)
+      CHECK (job.data[0][i] == 0, "binary job byte %d is %d, expected 0", i, job.data[0][i]);
+  }
+
+  /* Lineart is an alias for Binary; image 0 is bright enough for set bits. */
+  set_env ("CUSTOM_SCANNER_INDEX", "0"); /* image id 0: pixels (0, 1, 2), luminance 1 */
+  sane_custom_scanner_close (handle);
+  reinit ();
+  CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
+  CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Lineart", &info) ==
+             SANE_STATUS_GOOD,
+         "cannot select Lineart");
+  scan_job (handle, &job, MAX_PAGES);
+  check_pages (&job, "lineart job", 1, NULL);
+  if (!job.error && job.pages == 1)
+  {
+    CHECK (job.depth[0] == 1, "the lineart job has depth %d", job.depth[0]);
+    /* Luminance of (0, 1, 2) = (0 + 587 + 228) / 1000 = 0 -> all bits 0. */
+    for (i = 0; i < (int) job.bytes[0]; i++)
+      CHECK (job.data[0][i] == 0, "lineart job byte %d is %d, expected 0", i, job.data[0][i]);
+  }
+
+  /* A gray (P5) source requested as Color is expanded to rgb. */
+  sane_custom_scanner_close (handle);
+  {
+    char dir[512];
+    char path[600];
+
+    join (dir, sizeof dir, g_root, "gray-src");
+    make_dir (dir);
+    join (path, sizeof path, dir, "1-gray.pnm");
+    write_image (path, 0, 200, 255, 0);
+
+    set_env ("CUSTOM_SCANNER_IMAGE_DIR", dir);
+    set_env ("CUSTOM_SCANNER_INDEX", NULL);
+    reinit ();
+    CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
+    CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Color", &info) ==
+               SANE_STATUS_GOOD,
+           "cannot select Color");
+    scan_job (handle, &job, MAX_PAGES);
+    check_pages (&job, "gray source, color job", 1, NULL);
+    if (!job.error && job.pages == 1)
+    {
+      CHECK (job.format[0] == SANE_FRAME_RGB, "the expanded job is not rgb");
+      CHECK (job.bytes[0] == PAGE_BYTES, "the expanded job has %ld bytes", job.bytes[0]);
+      for (i = 0; i < (int) job.bytes[0]; i++)
+        CHECK (job.data[0][i] == 200, "expanded job byte %d is %d, expected 200", i, job.data[0][i]);
+    }
+
+    /* Binary on the bright gray image: every pixel is set, so each line
+       packs its 4 pixels into the high nibble (0xf0). */
+    CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Binary", &info) ==
+               SANE_STATUS_GOOD,
+           "cannot select Binary");
+    scan_job (handle, &job, MAX_PAGES);
+    check_pages (&job, "bright binary job", 1, NULL);
+    if (!job.error && job.pages == 1)
+    {
+      CHECK (job.depth[0] == 1, "the bright binary job has depth %d", job.depth[0]);
+      CHECK (job.bytes[0] == (size_t) ((IMG_W + 7) / 8) * IMG_H, "the bright binary job has %ld bytes",
+             job.bytes[0]);
+      for (i = 0; i < (int) job.bytes[0]; i++)
+        CHECK (job.data[0][i] == 0xf0, "bright binary byte %d is 0x%02x, expected 0xf0", i, job.data[0][i]);
+    }
+  }
+
+  /* Unknown modes are rejected. */
+  CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Nope", &info) !=
+             SANE_STATUS_GOOD,
+         "an unknown mode was accepted");
 
   sane_custom_scanner_close (handle);
 }
@@ -647,7 +818,8 @@ int main (void)
   test_source_option ();
   test_single_and_index ();
   test_formats ();
-  test_legacy_channel_order ();
+  test_channel_order ();
+  test_modes ();
   test_errors ();
 
   snprintf (command, sizeof command, "rm -rf '%s'", g_root);

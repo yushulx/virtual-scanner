@@ -67,14 +67,24 @@ enum
 {
   OPT_NUM_OPTIONS = 0,
   OPT_SOURCE,
+  OPT_MODE,
   OPT_COUNT
 };
 
 static const char *const source_list[] = {"Flatbed", "Automatic Document Feeder", NULL};
+static const char *const mode_list[]   = {"Color", "Gray", "Binary", "Lineart", NULL};
 
 /* Values accepted for the "source" option. */
 #define SOURCE_FLATBED "Flatbed"
 #define SOURCE_ADF     "Automatic Document Feeder"
+
+/* Canonical values of the "mode" option. "Lineart" is accepted as an alias
+   for "Binary" (hardware backends use either name). The color mode is
+   selected by the frontend through this option, there is no configuration
+   key for it. */
+#define MODE_COLOR  "Color"
+#define MODE_GRAY   "Gray"
+#define MODE_BINARY "Binary"
 
 /* ------------------------------------------------------------------------- */
 /* State                                                                     */
@@ -98,7 +108,8 @@ typedef struct
   char image_file[MAX_PATH_LEN];  /* explicit single image, "" = use a directory */
   char image_dir[MAX_PATH_LEN];   /* directory holding the image set */
   char mode[16];                  /* auto | cycle | adf | single */
-  char channel_order[8];          /* gbr (legacy default) | rgb */
+  char channel_order[8];          /* rgb (default) | gbr (legacy) */
+  char scan_mode[16];             /* color mode selected by the frontend: Color | Gray | Binary */
   char state_file[MAX_PATH_LEN];  /* where the cycle position is persisted */
   char device_name[256];
   int  max_pages;                 /* 0 = every image of the set */
@@ -115,6 +126,7 @@ typedef struct
   int    source_adf;              /* frontend selected the document feeder */
   FILE  *fp;                      /* currently opened page, NULL = none */
   ImageInfo info;
+  long   page_pixel;              /* pixels already handed out of this page */
 } Scanner;
 
 static Scanner    g_scanner;
@@ -256,7 +268,8 @@ static void config_defaults (Scanner *s)
   s->image_file[0] = '\0';
   set_string (s->image_dir, sizeof s->image_dir, CUSTOM_SCANNER_DEFAULT_DIR);
   set_string (s->mode, sizeof s->mode, "auto");
-  set_string (s->channel_order, sizeof s->channel_order, "gbr");
+  set_string (s->channel_order, sizeof s->channel_order, "rgb");
+  set_string (s->scan_mode, sizeof s->scan_mode, MODE_COLOR);
   set_string (s->device_name, sizeof s->device_name, DEFAULT_DEVICE_NAME);
   s->max_pages        = 0;
   s->configured_index = -1;
@@ -775,8 +788,9 @@ static SANE_Status open_page (Scanner *s, const char *path)
     return SANE_STATUS_IO_ERROR;
   }
 
-  s->fp   = fp;
-  s->info = info;
+  s->fp        = fp;
+  s->info      = info;
+  s->page_pixel = 0;
   DBG ("page %s: %dx%d, %s, maxval %d", path, info.width, info.height,
        info.channels == 3 ? "rgb" : "gray", info.maxval);
   return SANE_STATUS_GOOD;
@@ -966,6 +980,17 @@ const SANE_Option_Descriptor *sane_custom_scanner_get_option_descriptor (SANE_Ha
           SANE_CONSTRAINT_STRING_LIST,
           {source_list},
       },
+      {
+          SANE_NAME_SCAN_MODE,
+          SANE_TITLE_SCAN_MODE,
+          SANE_DESC_SCAN_MODE,
+          SANE_TYPE_STRING,
+          SANE_UNIT_NONE,
+          OPTION_STRING_SIZE,
+          SANE_CAP_SOFT_SELECT | SANE_CAP_SOFT_DETECT,
+          SANE_CONSTRAINT_STRING_LIST,
+          {mode_list},
+      },
   };
 
   (void) handle;
@@ -1023,14 +1048,61 @@ SANE_Status sane_custom_scanner_control_option (SANE_Handle handle, SANE_Int opt
     }
     return SANE_STATUS_UNSUPPORTED;
 
+  case OPT_MODE:
+    if (action == SANE_ACTION_GET_VALUE && value)
+    {
+      set_string ((char *) value, OPTION_STRING_SIZE, s->scan_mode);
+      return SANE_STATUS_GOOD;
+    }
+    if (action == SANE_ACTION_SET_VALUE && value)
+    {
+      const char *requested = (const char *) value;
+
+      if (!strcasecmp (requested, MODE_COLOR) || !strcasecmp (requested, "Colour"))
+        set_string (s->scan_mode, sizeof s->scan_mode, MODE_COLOR);
+      else if (!strcasecmp (requested, MODE_GRAY) || !strcasecmp (requested, "Grey"))
+        set_string (s->scan_mode, sizeof s->scan_mode, MODE_GRAY);
+      else if (!strcasecmp (requested, MODE_BINARY) || !strcasecmp (requested, "Lineart"))
+        set_string (s->scan_mode, sizeof s->scan_mode, MODE_BINARY);
+      else
+      {
+        WARN ("unsupported color mode '%s' (use Color, Gray or Binary)", requested);
+        return SANE_STATUS_INVAL;
+      }
+      DBG ("color mode '%s' selected", s->scan_mode);
+      if (info)
+        *info = SANE_INFO_RELOAD_PARAMS;
+      return SANE_STATUS_GOOD;
+    }
+    return SANE_STATUS_UNSUPPORTED;
+
   default:
     return SANE_STATUS_INVAL;
   }
 }
 
+/* The color mode the frontend selected through the "mode" option. */
+typedef enum
+{
+  OUT_COLOR = 0,
+  OUT_GRAY,
+  OUT_BINARY
+} OutMode;
+
+static OutMode out_mode (const Scanner *s)
+{
+  if (!strcasecmp (s->scan_mode, MODE_GRAY))
+    return OUT_GRAY;
+  if (!strcasecmp (s->scan_mode, MODE_BINARY))
+    return OUT_BINARY;
+  return OUT_COLOR;
+}
+
 SANE_Status sane_custom_scanner_get_parameters (SANE_Handle handle, SANE_Parameters *params)
 {
-  Scanner *s = &g_scanner;
+  Scanner *s     = &g_scanner;
+  OutMode  out   = out_mode (s);
+  int      depth = (out == OUT_BINARY) ? 1 : 8;
 
   (void) handle;
 
@@ -1043,12 +1115,14 @@ SANE_Status sane_custom_scanner_get_parameters (SANE_Handle handle, SANE_Paramet
   }
 
   memset (params, 0, sizeof *params);
-  params->format         = (s->info.channels == 3) ? SANE_FRAME_RGB : SANE_FRAME_GRAY;
+  params->format         = (out == OUT_COLOR) ? SANE_FRAME_RGB : SANE_FRAME_GRAY;
   params->last_frame     = SANE_TRUE;
-  params->bytes_per_line = s->info.width * s->info.channels;
+  params->bytes_per_line = (out == OUT_COLOR)   ? s->info.width * 3
+                           : (out == OUT_GRAY)  ? s->info.width
+                                                : (s->info.width + 7) / 8;
   params->pixels_per_line = s->info.width;
-  params->lines          = s->info.height;
-  params->depth          = 8;
+  params->lines           = s->info.height;
+  params->depth           = depth;
 
   return SANE_STATUS_GOOD;
 }
@@ -1084,6 +1158,7 @@ SANE_Status sane_custom_scanner_start (SANE_Handle handle)
       if (fseek (s->fp, s->info.data_offset, SEEK_SET) != 0)
         return SANE_STATUS_IO_ERROR;
       s->info.data_read = 0;
+      s->page_pixel     = 0;
       return SANE_STATUS_GOOD;
     }
     close_page (s); /* page complete: move on to the next one */
@@ -1103,33 +1178,28 @@ SANE_Status sane_custom_scanner_start (SANE_Handle handle)
   return open_page (s, s->images[s->pages[s->page_index]]);
 }
 
-/* Legacy behaviour: the RGB triples are rotated by one channel (RGB -> GBR).
-   The Dynamic Web TWAIN demo expects this order; set channel_order=rgb in the
-   configuration to hand out plain RGB instead. */
-static void rotate_channels (SANE_Byte *data, long bytes)
-{
-  long i;
-
-  for (i = 0; i + 2 < bytes; i += 3)
-  {
-    SANE_Byte tmp = data[i];
-    data[i]       = data[i + 1];
-    data[i + 1]   = data[i + 2];
-    data[i + 2]   = tmp;
-  }
-}
+/* Legacy channel order: the RGB triples are rotated by one channel
+   (RGB -> GBR) inside the read loop when channel_order=gbr. Only RGB frames
+   are rotated; the default channel_order=rgb hands out plain RGB as the
+   SANE standard requires. */
 
 SANE_Status sane_custom_scanner_read (SANE_Handle handle, SANE_Byte *data, SANE_Int max_length,
                                       SANE_Int *length)
 {
   Scanner *s = &g_scanner;
-  long     pixel_bytes;
+  OutMode  out;
+  int      out_channels;
+  int      bpl;
+  int      legacy_gbr;
   long     src_pixel_bytes;
   long     available_pixels;
   long     want_pixels;
   long     src_bytes;
-  long     out_bytes;
   long     got;
+  long     written    = 0;
+  long     last_byte  = -1;
+  long     i;
+  unsigned char *buffer;
 
   (void) handle;
 
@@ -1142,64 +1212,124 @@ SANE_Status sane_custom_scanner_read (SANE_Handle handle, SANE_Byte *data, SANE_
   if (s->info.data_read >= s->info.data_bytes)
     return SANE_STATUS_EOF;
 
-  pixel_bytes     = s->info.channels;
-  src_pixel_bytes = pixel_bytes * s->info.src_bpp;
+  out             = out_mode (s);
+  out_channels    = (out == OUT_COLOR) ? 3 : 1;
+  legacy_gbr      = (s->channel_order[0] != 'r');
+  src_pixel_bytes = s->info.channels * s->info.src_bpp;
 
   available_pixels = (s->info.data_bytes - s->info.data_read) / src_pixel_bytes;
-  want_pixels      = max_length / pixel_bytes;
+  want_pixels      = (out == OUT_BINARY) ? (long) max_length * 8 : max_length / out_channels;
   if (want_pixels > available_pixels)
     want_pixels = available_pixels;
   if (want_pixels <= 0)
     return SANE_STATUS_EOF;
 
   src_bytes = want_pixels * src_pixel_bytes;
-  out_bytes = want_pixels * pixel_bytes;
+  buffer    = malloc ((size_t) src_bytes);
+  if (!buffer)
+    return SANE_STATUS_NO_MEM;
 
-  if (s->info.src_bpp == 1)
+  got = (long) fread (buffer, 1, (size_t) src_bytes, s->fp);
+  if (got <= 0)
   {
-    got = (long) fread (data, 1, (size_t) src_bytes, s->fp);
-    if (got <= 0)
-      return SANE_STATUS_EOF;
-    got -= got % src_pixel_bytes; /* never split a pixel */
-    s->info.data_read += got;
-    if (s->info.channels == 3 && s->channel_order[0] != 'r')
-      rotate_channels (data, got);
-    *length = (SANE_Int) got;
-    return SANE_STATUS_GOOD;
-  }
-
-  /* 16 bit PNM files (maxval > 255) are downsized to 8 bit per sample. */
-  {
-    unsigned char *buffer = malloc ((size_t) src_bytes);
-    long           i;
-
-    if (!buffer)
-      return SANE_STATUS_NO_MEM;
-
-    got = (long) fread (buffer, 1, (size_t) src_bytes, s->fp);
-    if (got <= 0)
-    {
-      free (buffer);
-      return SANE_STATUS_EOF;
-    }
-    got -= got % src_pixel_bytes;
-    out_bytes = (got / src_pixel_bytes) * pixel_bytes;
-    s->info.data_read += got;
-
-    for (i = 0; i < out_bytes; i++)
-    {
-      unsigned int sample = ((unsigned int) buffer[2 * i] << 8) | buffer[2 * i + 1];
-
-      data[i] = (SANE_Byte) ((sample * 255u + (unsigned int) s->info.maxval / 2u) /
-                             (unsigned int) s->info.maxval);
-    }
     free (buffer);
-
-    if (s->info.channels == 3 && s->channel_order[0] != 'r')
-      rotate_channels (data, out_bytes);
-    *length = (SANE_Int) out_bytes;
-    return SANE_STATUS_GOOD;
+    return SANE_STATUS_EOF;
   }
+  got -= got % src_pixel_bytes; /* never split a pixel */
+  if (got <= 0)
+  {
+    free (buffer);
+    return SANE_STATUS_EOF;
+  }
+  s->info.data_read += got;
+  want_pixels = got / src_pixel_bytes;
+
+  bpl = (s->info.width + 7) / 8;
+
+  for (i = 0; i < want_pixels; i++)
+  {
+    unsigned int sample[3] = {0, 0, 0};
+    unsigned int rgb[3];
+    unsigned int gray;
+    int          src_channels = s->info.channels;
+    int          c;
+
+    /* Read one source pixel and scale every sample to 8 bit. */
+    for (c = 0; c < src_channels; c++)
+    {
+      const long offset = i * src_pixel_bytes + c * s->info.src_bpp;
+
+      if (s->info.src_bpp == 2)
+        sample[c] = ((unsigned int) buffer[offset] << 8) | buffer[offset + 1];
+      else
+        sample[c] = buffer[offset];
+
+      sample[c] = (sample[c] * 255u + (unsigned int) s->info.maxval / 2u) / (unsigned int) s->info.maxval;
+    }
+
+    if (src_channels == 3)
+    {
+      rgb[0] = sample[0];
+      rgb[1] = sample[1];
+      rgb[2] = sample[2];
+      /* ITU-R BT.601 luminance; invariant under the channel rotation. */
+      gray = (rgb[0] * 299u + rgb[1] * 587u + rgb[2] * 114u) / 1000u;
+    }
+    else
+    {
+      rgb[0] = rgb[1] = rgb[2] = sample[0];
+      gray = sample[0];
+    }
+
+    switch (out)
+    {
+    case OUT_COLOR:
+      if (src_channels == 3 && legacy_gbr)
+      {
+        data[written++] = (SANE_Byte) rgb[1];
+        data[written++] = (SANE_Byte) rgb[2];
+        data[written++] = (SANE_Byte) rgb[0];
+      }
+      else
+      {
+        data[written++] = (SANE_Byte) rgb[0];
+        data[written++] = (SANE_Byte) rgb[1];
+        data[written++] = (SANE_Byte) rgb[2];
+      }
+      break;
+
+    case OUT_GRAY:
+      data[written++] = (SANE_Byte) gray;
+      break;
+
+    case OUT_BINARY:
+    {
+      /* 1 bit per pixel, MSB first, lines padded to whole bytes. */
+      long pixel    = s->page_pixel + i;
+      long line     = pixel / s->info.width;
+      long column   = pixel % s->info.width;
+      long byte_pos = line * bpl + column / 8;
+      int  bit      = 7 - (int) (column % 8);
+
+      if (byte_pos != last_byte)
+      {
+        if (byte_pos > last_byte + 1)
+          memset (data + last_byte + 1, 0, (size_t) (byte_pos - last_byte - 1));
+        data[byte_pos] = 0;
+        last_byte      = byte_pos;
+      }
+      if (gray >= 128)
+        data[byte_pos] |= (SANE_Byte) (1u << bit);
+      written = last_byte + 1;
+      break;
+    }
+    }
+  }
+  free (buffer);
+
+  s->page_pixel += want_pixels;
+  *length = (SANE_Int) written;
+  return *length > 0 ? SANE_STATUS_GOOD : SANE_STATUS_EOF;
 }
 
 void sane_custom_scanner_cancel (SANE_Handle handle)

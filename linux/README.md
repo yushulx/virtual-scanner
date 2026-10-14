@@ -71,6 +71,9 @@ scanimage -d custom_scanner:virtual > out2.pnm     # different picture
 
 # document feeder: all pictures as one multi page document
 scanimage -d custom_scanner:virtual --source 'Automatic Document Feeder' --batch=page-%02d.pnm
+
+# color mode like a real scanner (Color | Gray | Binary)
+scanimage -d custom_scanner:virtual --mode Gray > out-gray.pnm
 ```
 
 ## Configuration
@@ -102,9 +105,9 @@ mode = auto
 # where the position is remembered (default: ~/.local/state/custom_scanner/index)
 #state_file = ~/.local/state/custom_scanner/index
 
-# gbr (default, legacy: the Dynamic Web TWAIN demo expects this order)
-# rgb (plain SANE RGB, use this for scanimage/xsane)
-#channel_order = gbr
+# gbr (legacy behaviour, only needed by old frontends)
+# rgb (plain SANE RGB, the default)
+#channel_order = rgb
 
 # device name (the SANE dll layer shows it as custom_scanner:virtual)
 #device_name = virtual
@@ -115,6 +118,21 @@ mode = auto
 ```bash
 CUSTOM_SCANNER_DEBUG=1 scanimage -L
 ```
+
+## Color mode
+
+The backend exposes the standard SANE `mode` option, so frontends control the
+pixel type like with any real scanner:
+
+| Mode | What the frontend receives |
+| --- | --- |
+| `Color` | 8 bit `SANE_FRAME_RGB` (a gray source is expanded to rgb) |
+| `Gray` | 8 bit `SANE_FRAME_GRAY` (color sources are converted with the BT.601 luminance) |
+| `Binary` / `Lineart` | 1 bit `SANE_FRAME_GRAY`, threshold at 128, MSB first |
+
+scanimage selects it with `--mode Gray`, the Dynamic Web TWAIN demo with its
+*Pixel Type* setting (B&W / Gray / Color). The `channel_order` rotation only
+applies to `Color` frames.
 
 ## Using your own pictures
 
@@ -204,9 +222,10 @@ CUSTOM_SCANNER_DEBUG=1 scanimage -d custom_scanner:virtual > out.pnm
   (`grep -r . /etc/sane.d/dll.conf`, `dpkg -L sane-custom-scanner`).
 * *Document feeder out of documents* - the picture folder is empty, does not
   exist, or contains no readable PNM file (the backend says so on `stderr`).
-* *Wrong colours* - the backend keeps the channel order of the original
-  implementation (`channel_order = gbr`) for the Dynamic Web TWAIN demo; set
-  `channel_order = rgb` for standard SANE RGB frames.
+* *Wrong colours* - the backend hands out plain RGB (`channel_order = rgb`)
+  as the SANE standard requires. If an old frontend still shows rotated
+  colours, set `channel_order = gbr`, the legacy behaviour of earlier
+  releases.
 * The device is listed as `custom_scanner:virtual` (the SANE `dll` layer
   prefixes the name reported by the backend) - use that name with `-d`.
 
