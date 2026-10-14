@@ -57,7 +57,7 @@ test: $(BUILD_DIR)/selftest
 	$(BUILD_DIR)/selftest
 
 samples:
-	./scripts/make_samples.sh
+	bash scripts/make_samples.sh
 
 install: $(LIB)
 	install -d "$(DESTDIR)$(SANE_LIB_DIR)"
@@ -102,7 +102,7 @@ uninstall:
 	rm -rf "$(DESTDIR)$(SHARE_DIR)"
 
 deb: $(LIB)
-	./scripts/make_deb.sh "$(VERSION)"
+	bash scripts/make_deb.sh "$(VERSION)"
 
 clean:
 	rm -f $(LIB)

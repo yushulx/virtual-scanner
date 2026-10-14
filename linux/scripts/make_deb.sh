@@ -34,7 +34,7 @@ ARCH="$(dpkg --print-architecture 2>/dev/null || dpkg-architecture -qDEB_HOST_AR
 if ! ls "$LINUX_DIR"/samples/*.pnm >/dev/null 2>&1; then
   if command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; then
     echo "==> samples/ is empty, generating the sample image set"
-    "$SCRIPT_DIR/make_samples.sh"
+    bash "$SCRIPT_DIR/make_samples.sh"
   else
     echo "note: no sample images (ImageMagick is not installed); the package will"
     echo "      only ship test.pnm"

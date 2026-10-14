@@ -156,7 +156,7 @@ if [[ "$WANT_SAMPLES" != "no" ]]; then
 
   if [[ "$have_magick" -eq 1 ]]; then
     echo "==> Generating the sample image set"
-    SAMPLES_OUT_DIR="$LINUX_DIR/samples" "$SCRIPT_DIR/make_samples.sh"
+    SAMPLES_OUT_DIR="$LINUX_DIR/samples" bash "$SCRIPT_DIR/make_samples.sh"
   else
     echo "note: skipping the sample image set (ImageMagick is not installed)"
     echo "      the package ships test.pnm as a single fallback image"
