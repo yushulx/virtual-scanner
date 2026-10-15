@@ -206,12 +206,27 @@ jobs:
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           ARCHS_OVERRIDE: 'x86_64 arm64'
+          # Optional: set these repository secrets to sign and notarize the
+          # package. Without them the package is ad-hoc/unsigned and macOS
+          # Gatekeeper blocks it (users must install via `sudo installer`).
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+          KEYCHAIN_PROFILE: ${{ secrets.MACOS_KEYCHAIN_PROFILE }}
+          APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
         run: bash ./macos/Scripts/package.sh "$VERSION" --build
 
       - name: Build the installer package (native architecture)
         if: steps.universal.outcome == 'failure'
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+          KEYCHAIN_PROFILE: ${{ secrets.MACOS_KEYCHAIN_PROFILE }}
+          APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
         run: |
           rm -rf macos/build macos/dist
           bash ./macos/Scripts/package.sh "$VERSION" --build
@@ -223,7 +238,7 @@ jobs:
           pkg="macos/dist/VirtualScanner-$VERSION.pkg"
           ls -l "$pkg"
           pkgutil --payload-files "$pkg" | head -50
-          pkgutil --check-signature "$pkg" || echo "(not signed - expected for ad-hoc builds)"
+          pkgutil --check-signature "$pkg" || echo "(not signed - set the MACOS_* secrets to sign and notarize)"
 
       - name: Upload the package
         uses: actions/upload-artifact@v4
@@ -275,8 +290,12 @@ jobs:
 
             * Windows: a TWAIN Data Source Manager (`twaindsm.dll` / `twain_32.dll`) must be
               present - every scanner driver or Dynamic Web TWAIN installs one.
-            * macOS: the package is ad-hoc signed; sign and notarize it with your own
-              Developer ID before distributing it widely.
+            * macOS: double-clicking the package may be blocked by Gatekeeper ("Apple could
+              not verify ..."). Either right-click the file and choose Open, run
+              `xattr -d com.apple.quarantine VirtualScanner-*.pkg` first, or install from
+              the terminal: `sudo installer -pkg VirtualScanner-<version>.pkg -target /`.
+              To get a signed and notarized package, set the `MACOS_*` repository secrets
+              (see `macos/Scripts/package.sh`) and rebuild the release.
             * Linux: the backend is installed together with its configuration, the sample
               images and the `dll.d` drop-in that enables it; check the sample folder at
               `/usr/share/custom_scanner/images`.

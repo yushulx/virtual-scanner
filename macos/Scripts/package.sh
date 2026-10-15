@@ -28,6 +28,22 @@
 #   --no-dwt  bake INSTALL_DWT_SERVICE=never into the packaged config so the
 #             postinstall will not install the Dynamic Web TWAIN Service
 #
+# Signing / notarization (all optional - without them the package is ad-hoc
+# signed and macOS Gatekeeper blocks it on other machines):
+#
+#   SIGNING_IDENTITY   codesign identity for the app, e.g. "Developer ID
+#                      Application: YOUR NAME (TEAMID)". "-" keeps the app
+#                      ad-hoc signed.
+#   INSTALLER_IDENTITY pkgbuild signing identity, e.g. "Developer ID
+#                      Installer: YOUR NAME (TEAMID)". Required for a
+#                      Gatekeeper-friendly package.
+#   KEYCHAIN_PROFILE   `notarytool` keychain profile (created once with
+#                      `xcrun notarytool store-credentials`). When set, the
+#                      package is notarized and stapled.
+#   APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
+#                      alternative notarytool auth (app-specific password).
+#                      Used only when KEYCHAIN_PROFILE is not set.
+#
 # Install on a target Mac with:
 #   sudo installer -pkg dist/VirtualScanner-1.0.pkg -target /
 #
@@ -121,18 +137,60 @@ else
   cp "$SCRIPT_DIR/scanner.config" "$PKG_ROOT$SUPPORT_DIR/scanner.config"
 fi
 
+# --- Sign the app bundle (optional) ----------------------------------------------
+SIGN_IDENTITY="${SIGNING_IDENTITY:--}"
+if [[ "$SIGN_IDENTITY" != "-" ]]; then
+  echo "==> Signing $APP_NAME with: $SIGN_IDENTITY"
+  codesign --force --deep --options runtime --timestamp \
+    --sign "$SIGN_IDENTITY" \
+    "$PKG_ROOT$APP_INSTALL_DIR/$APP_NAME"
+else
+  echo "==> No SIGNING_IDENTITY set - the app stays ad-hoc signed"
+fi
+
 # --- Build the installer package -------------------------------------------------
 mkdir -p "$DIST_DIR"
 PKG_PATH="$DIST_DIR/VirtualScanner-$VERSION.pkg"
 
+INSTALLER_IDENTITY="${INSTALLER_IDENTITY:-}"
+pkgbuild_args=(
+  --root "$PKG_ROOT"
+  --identifier "$BUNDLE_ID"
+  --version "$VERSION"
+  --scripts "$SCRIPT_DIR/pkg-scripts"
+  --install-location "/"
+)
+
+if [[ -n "$INSTALLER_IDENTITY" ]]; then
+  echo "==> Signing the package with: $INSTALLER_IDENTITY"
+  pkgbuild_args+=(--sign "$INSTALLER_IDENTITY")
+else
+  echo "==> No INSTALLER_IDENTITY set - the package will be UNSIGNED"
+  echo "    (Gatekeeper will block it on other Macs; install via CLI with:"
+  echo "     sudo installer -pkg <pkg> -target /  or remove the quarantine"
+  echo "     attribute: xattr -d com.apple.quarantine <pkg>)"
+fi
+
 echo "==> Building installer package: $PKG_PATH"
-pkgbuild \
-  --root "$PKG_ROOT" \
-  --identifier "$BUNDLE_ID" \
-  --version "$VERSION" \
-  --scripts "$SCRIPT_DIR/pkg-scripts" \
-  --install-location "/" \
-  "$PKG_PATH"
+pkgbuild "${pkgbuild_args[@]}" "$PKG_PATH"
+
+# --- Notarize and staple (optional) ----------------------------------------------
+KEYCHAIN_PROFILE="${KEYCHAIN_PROFILE:-}"
+if [[ -n "$INSTALLER_IDENTITY" && -n "$KEYCHAIN_PROFILE" ]]; then
+  echo "==> Submitting the package for notarization (profile: $KEYCHAIN_PROFILE)"
+  xcrun notarytool submit "$PKG_PATH" --keychain-profile "$KEYCHAIN_PROFILE" --wait
+  echo "==> Stapling the notarization ticket"
+  xcrun stapler staple "$PKG_PATH"
+elif [[ -n "$INSTALLER_IDENTITY" && -n "${APPLE_ID:-}" && -n "${APPLE_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+  echo "==> Submitting the package for notarization (Apple ID: $APPLE_ID)"
+  xcrun notarytool submit "$PKG_PATH" \
+    --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+  echo "==> Stapling the notarization ticket"
+  xcrun stapler staple "$PKG_PATH"
+else
+  echo "==> Skipping notarization (set KEYCHAIN_PROFILE, or APPLE_ID +"
+  echo "    APPLE_PASSWORD + APPLE_TEAM_ID, to enable it)"
+fi
 
 echo "==> Done. Single-command installer created at:"
 echo "    $PKG_PATH"

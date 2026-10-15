@@ -101,9 +101,34 @@ sudo installer -pkg dist/VirtualScanner-1.0.pkg -target /
 ```
 
 > Note: `VirtualScanner.app` is ad-hoc signed for local use. If you plan to
-> distribute the `.pkg` outside your own machine, sign and notarize it with
-> your own Apple Developer ID (`CODE_SIGN_IDENTITY` / `DEVELOPMENT_TEAM` build
-> settings) so Gatekeeper allows it to run without warnings.
+> distribute the `.pkg` outside your own machine, sign and notarize it so
+> Gatekeeper allows it to run without warnings.
+>
+> `Scripts/package.sh` supports this via environment variables:
+>
+> ```bash
+> SIGNING_IDENTITY="Developer ID Application: YOUR NAME (TEAMID)" \
+> INSTALLER_IDENTITY="Developer ID Installer: YOUR NAME (TEAMID)" \
+> KEYCHAIN_PROFILE="notarytool-profile" \
+> ./Scripts/package.sh 1.0.3
+> ```
+>
+> - `SIGNING_IDENTITY` — codesigns the app with hardened runtime. Requires a
+>   **Developer ID Application** certificate.
+> - `INSTALLER_IDENTITY` — signs the `.pkg` itself. Requires a **Developer ID
+>   Installer** certificate (both are free from <https://developer.apple.com>).
+> - `KEYCHAIN_PROFILE` — submits the signed package to Apple notary service and
+>   staples the ticket. Create the profile once with
+>   `xcrun notarytool store-credentials`. Alternatively set `APPLE_ID`,
+>   `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`.
+>
+> The GitHub Actions workflow (`.github/workflows/build-installers.yml`) picks
+> the same values up from the `MACOS_SIGNING_IDENTITY`,
+> `MACOS_INSTALLER_IDENTITY`, `MACOS_KEYCHAIN_PROFILE`, `MACOS_APPLE_ID`,
+> `MACOS_APPLE_PASSWORD` and `MACOS_APPLE_TEAM_ID` repository secrets when they
+> are configured. Without signing, users can still install by removing the
+> quarantine attribute (`xattr -d com.apple.quarantine VirtualScanner-*.pkg`)
+> or from the terminal (`sudo installer -pkg ... -target /`).
 
 ## Bonjour Advertisement (why it's needed)
 
