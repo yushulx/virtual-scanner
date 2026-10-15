@@ -101,6 +101,8 @@ if [[ "$DO_BUILD" -eq 1 ]]; then
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=YES \
     CODE_SIGNING_ALLOWED=YES \
+    MARKETING_VERSION="$VERSION" \
+    CURRENT_PROJECT_VERSION="$VERSION" \
     "${extra_build_args[@]}" \
     build
 fi

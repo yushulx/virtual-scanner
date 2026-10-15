@@ -36,6 +36,21 @@ dwt_running() {
   curl -s -m 2 -o /dev/null -w "%{http_code}" "http://127.0.0.1:18622/" 2>/dev/null | grep -q "^200$"
 }
 
+# --- 0. Remove stale user-scope device modules --------------------------------
+# Older versions of the setup flow (Scripts/build_and_install.sh) installed the
+# device module into ~/Library/Image Capture/Devices. When both the user-scope
+# and the system-scope copy exist, icdd lists the device twice ("... (2)"), and
+# the stale user-scope copy is usually an old build with known bugs. The
+# system-scope copy in /Library/Image Capture/Devices is the single source of
+# truth now, so remove the user-scope leftovers.
+for home in /Users/*; do
+  STALE_APP="$home/Library/Image Capture/Devices/VirtualScanner.app"
+  if [[ -d "$STALE_APP" ]]; then
+    echo "postinstall: removing stale user-scope device module: $STALE_APP"
+    rm -rf "$STALE_APP"
+  fi
+done
+
 # --- 1. Bonjour advertisement -------------------------------------------------
 # Load the agent for the logged-in GUI user so the scanner appears immediately;
 # the /Library/LaunchAgents copy also auto-loads for all users at login.
