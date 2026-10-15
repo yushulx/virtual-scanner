@@ -125,6 +125,17 @@ mkdir -p "$PKG_ROOT/Library/LaunchAgents"
 mkdir -p "$PKG_ROOT$SUPPORT_DIR"
 
 cp -R "$BUILT_APP" "$PKG_ROOT$APP_INSTALL_DIR/$APP_NAME"
+
+# Stamp the release version into the app bundle. The Xcode project's
+# VirtualScanner-Info.plist hardcodes CFBundleShortVersionString=1.0, so
+# without this every build reports 1.0 and stale copies are
+# indistinguishable from fresh ones. Editing the plist invalidates the
+# build's ad-hoc signature, so the app is always re-signed below.
+STAMPED_PLIST="$PKG_ROOT$APP_INSTALL_DIR/$APP_NAME/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$STAMPED_PLIST" >/dev/null
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$STAMPED_PLIST" >/dev/null
+echo "==> Stamped app version: $VERSION"
+
 cp "$SCRIPT_DIR/com.dynamsoft.virtualscanner.bonjour.plist" \
    "$PKG_ROOT/Library/LaunchAgents/com.dynamsoft.virtualscanner.bonjour.plist"
 cp "$SCRIPT_DIR/verify_scanner.py" \
@@ -139,7 +150,7 @@ else
   cp "$SCRIPT_DIR/scanner.config" "$PKG_ROOT$SUPPORT_DIR/scanner.config"
 fi
 
-# --- Sign the app bundle (optional) ----------------------------------------------
+# --- Sign the app bundle (re-sign after the plist stamping) ----------------------
 SIGN_IDENTITY="${SIGNING_IDENTITY:--}"
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   echo "==> Signing $APP_NAME with: $SIGN_IDENTITY"
@@ -147,7 +158,8 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
     --sign "$SIGN_IDENTITY" \
     "$PKG_ROOT$APP_INSTALL_DIR/$APP_NAME"
 else
-  echo "==> No SIGNING_IDENTITY set - the app stays ad-hoc signed"
+  echo "==> No SIGNING_IDENTITY set - re-signing the app ad-hoc"
+  codesign --force --deep --sign - "$PKG_ROOT$APP_INSTALL_DIR/$APP_NAME"
 fi
 
 # --- Build the installer package -------------------------------------------------
