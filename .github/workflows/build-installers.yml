@@ -284,18 +284,26 @@ jobs:
             | Windows | `VirtualScannerSetup-${{ needs.resolve.outputs.version }}.exe` | Run it (asks for administrator rights) and scan with twacker / the [Dynamic Web TWAIN demo](https://demo.dynamsoft.com/web-twain/). |
             | Windows | `VirtualScanner-${{ needs.resolve.outputs.version }}-win64-portable.zip` | Unpack into `C:\Windows\twain_64\sample2` and run `configure-samples.cmd`. |
             | Linux | `sane-custom-scanner_${{ needs.resolve.outputs.version }}_amd64.deb` | `sudo apt install ./sane-custom-scanner_<version>_amd64.deb`, then `scanimage -L`. |
-            | macOS | `VirtualScanner-${{ needs.resolve.outputs.version }}.pkg` | `sudo installer -pkg VirtualScanner-<version>.pkg -target /`, then open Image Capture. |
+            | macOS | `VirtualScanner-${{ needs.resolve.outputs.version }}.pkg` | Run the one-line installer below (see Notes), then open Image Capture. |
 
             Notes
 
+            * macOS: the `.pkg` is not Developer ID signed, so double-clicking a
+              browser-downloaded copy is blocked by Gatekeeper ("Apple could not
+              verify ..."). Install with the one-line installer instead - `curl`
+              does not set the quarantine attribute and `installer` skips the
+              Gatekeeper assessment:
+
+              ```bash
+              curl -fsSL https://raw.githubusercontent.com/yushulx/virtual-scanner/main/macos/Scripts/install.sh | bash
+              ```
+
+              or install a manually downloaded copy from the terminal:
+              `sudo installer -pkg VirtualScanner-<version>.pkg -target /`.
+              To ship a signed and notarized package, set the `MACOS_*`
+              repository secrets (see `macos/Scripts/package.sh`) and rebuild.
             * Windows: a TWAIN Data Source Manager (`twaindsm.dll` / `twain_32.dll`) must be
               present - every scanner driver or Dynamic Web TWAIN installs one.
-            * macOS: double-clicking the package may be blocked by Gatekeeper ("Apple could
-              not verify ..."). Either right-click the file and choose Open, run
-              `xattr -d com.apple.quarantine VirtualScanner-*.pkg` first, or install from
-              the terminal: `sudo installer -pkg VirtualScanner-<version>.pkg -target /`.
-              To get a signed and notarized package, set the `MACOS_*` repository secrets
-              (see `macos/Scripts/package.sh`) and rebuild the release.
             * Linux: the backend is installed together with its configuration, the sample
               images and the `dll.d` drop-in that enables it; check the sample folder at
               `/usr/share/custom_scanner/images`.
