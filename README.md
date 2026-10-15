@@ -48,6 +48,18 @@ sudo installer -pkg VirtualScanner-1.0.0.pkg -target /
 # then open Image Capture: "Virtual Scanner EX/AF"
 ```
 
+> The `.pkg` is not Developer ID signed, so Gatekeeper refuses to open a
+> browser-downloaded copy ("Apple could not verify ..."). Use the one-line
+> installer instead - `curl` does not set the quarantine attribute and
+> `installer` skips the Gatekeeper assessment:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/yushulx/virtual-scanner/main/macos/Scripts/install.sh | bash
+> ```
+>
+> or download the `.pkg` manually and run
+> `sudo installer -pkg VirtualScanner-<version>.pkg -target /`.
+
 ## Common behaviour
 
 * A scan returns the pictures of a folder, one picture per scan job
