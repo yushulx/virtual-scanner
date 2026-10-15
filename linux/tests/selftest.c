@@ -691,7 +691,8 @@ static void test_modes (void)
       CHECK (job.data[0][i] == 3, "gray job byte %d is %d, expected 3", i, job.data[0][i]);
   }
 
-  /* Binary: every sample of image 3 is dark, so all bits are 0. */
+  /* Binary: every sample of image 3 is dark, and a dark pixel sets the bit
+     (SANE 1-bit polarity: set bit = black ink). */
   CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Binary", &info) ==
              SANE_STATUS_GOOD,
          "cannot select Binary");
@@ -705,11 +706,12 @@ static void test_modes (void)
            job.bytes_per_line[0]);
     CHECK (job.bytes[0] == (size_t) ((IMG_W + 7) / 8) * IMG_H, "the binary job has %ld bytes", job.bytes[0]);
     for (i = 0; i < (int) job.bytes[0]; i++)
-      CHECK (job.data[0][i] == 0, "binary job byte %d is %d, expected 0", i, job.data[0][i]);
+      CHECK (job.data[0][i] == 0xf0, "binary job byte %d is 0x%02x, expected 0xf0 (black pixels set)",
+             i, job.data[0][i]);
   }
 
-  /* Lineart is an alias for Binary; image 0 is bright enough for set bits. */
-  set_env ("CUSTOM_SCANNER_INDEX", "0"); /* image id 0: pixels (0, 1, 2), luminance 1 */
+  /* Lineart is an alias for Binary; image 0 is dark, so its bits are set. */
+  set_env ("CUSTOM_SCANNER_INDEX", "0"); /* image id 0: pixels (0, 1, 2), luminance 0 */
   sane_custom_scanner_close (handle);
   reinit ();
   CHECK (sane_custom_scanner_open ("custom_scanner:virtual", &handle) == SANE_STATUS_GOOD, "sane_open failed");
@@ -721,9 +723,9 @@ static void test_modes (void)
   if (!job.error && job.pages == 1)
   {
     CHECK (job.depth[0] == 1, "the lineart job has depth %d", job.depth[0]);
-    /* Luminance of (0, 1, 2) = (0 + 587 + 228) / 1000 = 0 -> all bits 0. */
+    /* Luminance of (0, 1, 2) = (0 + 587 + 228) / 1000 = 0 -> black -> bits set. */
     for (i = 0; i < (int) job.bytes[0]; i++)
-      CHECK (job.data[0][i] == 0, "lineart job byte %d is %d, expected 0", i, job.data[0][i]);
+      CHECK (job.data[0][i] == 0xf0, "lineart job byte %d is 0x%02x, expected 0xf0", i, job.data[0][i]);
   }
 
   /* A gray (P5) source requested as Color is expanded to rgb. */
@@ -754,8 +756,8 @@ static void test_modes (void)
         CHECK (job.data[0][i] == 200, "expanded job byte %d is %d, expected 200", i, job.data[0][i]);
     }
 
-    /* Binary on the bright gray image: every pixel is set, so each line
-       packs its 4 pixels into the high nibble (0xf0). */
+    /* Binary on the bright gray image: every pixel is white paper, so no
+       bit is set. */
     CHECK (sane_custom_scanner_control_option (handle, 2, SANE_ACTION_SET_VALUE, (void *) "Binary", &info) ==
                SANE_STATUS_GOOD,
            "cannot select Binary");
@@ -767,7 +769,8 @@ static void test_modes (void)
       CHECK (job.bytes[0] == (size_t) ((IMG_W + 7) / 8) * IMG_H, "the bright binary job has %ld bytes",
              job.bytes[0]);
       for (i = 0; i < (int) job.bytes[0]; i++)
-        CHECK (job.data[0][i] == 0xf0, "bright binary byte %d is 0x%02x, expected 0xf0", i, job.data[0][i]);
+        CHECK (job.data[0][i] == 0x00, "bright binary byte %d is 0x%02x, expected 0x00 (white paper)",
+               i, job.data[0][i]);
     }
   }
 
@@ -848,8 +851,8 @@ static void test_binary_multiread (void)
   join (dir, sizeof dir, g_root, "binary-big");
   make_dir (dir);
   join (path, sizeof path, dir, "1-big.pnm");
-  /* id 200: pixels (200, 201, 202), luminance 200 -> every bit is 1. */
-  if (!write_sized_image (path, 1, 200, 255, 33, 5))
+  /* id 3: pixels (3, 4, 5), luminance 3 -> black ink -> every bit is set. */
+  if (!write_sized_image (path, 1, 3, 255, 33, 5))
   {
     printf ("cannot create %s\n", path);
     exit (2);

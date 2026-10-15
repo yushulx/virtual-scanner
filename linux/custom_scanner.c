@@ -1333,7 +1333,9 @@ SANE_Status sane_custom_scanner_read (SANE_Handle handle, SANE_Byte *data, SANE_
         data[byte_pos] = 0;
         last_byte      = byte_pos;
       }
-      if (gray >= 128)
+      /* SANE 1-bit polarity (like PBM): a SET bit is black ink, a clear bit
+         is white paper - dark pixels must set the bit. */
+      if (gray < 128)
         data[byte_pos] |= (SANE_Byte) (1u << bit);
       written = last_byte + 1;
       break;

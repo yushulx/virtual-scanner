@@ -128,7 +128,7 @@ pixel type like with any real scanner:
 | --- | --- |
 | `Color` | 8 bit `SANE_FRAME_RGB` (a gray source is expanded to rgb) |
 | `Gray` | 8 bit `SANE_FRAME_GRAY` (color sources are converted with the BT.601 luminance) |
-| `Binary` / `Lineart` | 1 bit `SANE_FRAME_GRAY`, threshold at 128, MSB first |
+| `Binary` / `Lineart` | 1 bit `SANE_FRAME_GRAY`, threshold at 128, MSB first, a set bit is black ink |
 
 scanimage selects it with `--mode Gray`, the Dynamic Web TWAIN demo with its
 *Pixel Type* setting (B&W / Gray / Color). The `channel_order` rotation only
